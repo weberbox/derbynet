@@ -5,11 +5,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import jssc.SerialPort;
 import jssc.SerialPortException;
+import org.jeffpiazza.derby.LogWriter;
 import org.jeffpiazza.derby.Message;
-import org.jeffpiazza.derby.Timestamp;
 import org.jeffpiazza.derby.serialport.SerialPortWrapper;
 
-public class MiscJunkDevice extends TimerDeviceCommon {
+public class MiscJunkDevice extends TimerDeviceCommon
+    implements RemoteStartInterface {
   public MiscJunkDevice(SerialPortWrapper portWrapper) {
     super(portWrapper, null);
 
@@ -54,7 +55,7 @@ public class MiscJunkDevice extends TimerDeviceCommon {
   }
 
   public static String toHumanString() {
-    return "MiscJunk PDT (http://www.miscjunk.org/mj/pg_pdt.html)";
+    return "PDT timer (https://www.dfgtec.com/pdt)";
   }
 
   private int numberOfLanes = 0;
@@ -67,6 +68,7 @@ public class MiscJunkDevice extends TimerDeviceCommon {
   private static final String UNMASK_ALL_LANES = "U";
   private static final String POLL_GATE = "G";
   private static final String FORCE_END_OF_RACE = "F";
+  private static final String START_SOLENOID = "S";
 
   @Override
   public boolean probe() throws SerialPortException {
@@ -78,13 +80,18 @@ public class MiscJunkDevice extends TimerDeviceCommon {
                                    /* dtr */ false)) {
       return false;
     }
-
+    // We just reset the timer, give it 2s to startup
+    try {
+      Thread.sleep(2000); // ms.
+    } catch (Exception exc) {
+    }
     portWrapper.write(READ_VERSION);
     long deadline = System.currentTimeMillis() + 500;
     String s;
     while ((s = portWrapper.next(deadline)) != null) {
       if (s.indexOf("vert=") >= 0) {
-
+        timerIdentifier = s;
+        has_ever_spoken = true;
         // Responds either "P" or "O"
         portWrapper.writeAndWaitForResponse(RESET, 500);
 
@@ -93,9 +100,7 @@ public class MiscJunkDevice extends TimerDeviceCommon {
         if (nl_index >= 0 && nl.length() > nl_index + 5) {
           this.numberOfLanes = nl.charAt(nl_index + 5) - '0';
           if (0 < numberOfLanes && numberOfLanes <= 9) {
-            portWrapper.logWriter().serialPortLogInternal(
-                Timestamp.string() + ": "
-                + this.numberOfLanes + " lane(s) reported.");
+            LogWriter.serial(this.numberOfLanes + " lane(s) reported.");
             setUp();
             return true;
           }
@@ -116,7 +121,7 @@ public class MiscJunkDevice extends TimerDeviceCommon {
           // The timer announces a race start with "B" and moves to RACING state.
           // In RACING state it stops responding to gate state queries.  Continuing to
           // poll will lead to perceived connection timeouts. TIMER LED=purple
-          setOkToPoll(false); 
+          setOkToPoll(false);
           onGateStateChange(false);
           return "";
         }
@@ -130,8 +135,8 @@ public class MiscJunkDevice extends TimerDeviceCommon {
         Matcher m = resultLine.matcher(line);
         if (m.find()) {
           int lane = Integer.parseInt(m.group(1));
-          portWrapper.logWriter().serialPortLogInternal(
-              "Detected result for lane " + lane + " = " + m.group(2));  // TODO
+          LogWriter.serial("Detected result for lane " + lane + " = " + m.group(
+              2));  // TODO
           if (results != null) {
             TimerDeviceUtils.addOneLaneResult(lane, m.group(2), -1, results);
             // Results are sent in lane order, so results are complete when
@@ -146,8 +151,7 @@ public class MiscJunkDevice extends TimerDeviceCommon {
               //setOkToPoll(true);
             }
           } else {
-            portWrapper.logWriter().serialPortLogInternal(
-                "*** Unexpected lane result");
+            LogWriter.serial("*** Unexpected lane result");
           }
           return "";
         } else {
@@ -155,6 +159,16 @@ public class MiscJunkDevice extends TimerDeviceCommon {
         }
       }
     });
+  }
+
+  @Override
+  public boolean hasRemoteStart() {
+    return true;
+  }
+
+  @Override
+  public void remoteStart() throws SerialPortException {
+    portWrapper.writeAndDrainResponse(START_SOLENOID);
   }
 
   @Override
@@ -174,7 +188,7 @@ public class MiscJunkDevice extends TimerDeviceCommon {
       // Upon entering RESULTS_OVERDUE state, we sent FORCE_END_OF_RACE; see
       // onTransition.
       if (portWrapper.millisSinceLastContact() > 1000) {
-	// Track was RACING and we forced the end of race, we need to wait for READY
+        // Track was RACING and we forced the end of race, we need to wait for READY
         // before we start polling.
         throw new LostConnectionException();
       } else if (rsm.millisInCurrentState() > 1000) {

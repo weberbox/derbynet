@@ -8,31 +8,23 @@ import org.w3c.dom.Element;
 // For exercising a timer device class, this takes the place of a ClientSession
 // to simulate the actions of a web host running races.
 public class SimulatedClientSession extends ClientSession {
-  // TODO That these are static implies there are multiple SimulatedClientSessions ?
-  private static int nlanes = 0;
   // Sent after sending a heat-ready, and precludes sending another heat-ready
   // until the current one is answered or aborted.
   private String heatReadyString = null;
   private int numberOfHeatsPrepared = 0;
-  private LogWriter logWriter;
   private Random random;
 
-  public SimulatedClientSession(LogWriter logWriter) {
+  public SimulatedClientSession() {
     super("");
-    this.logWriter = logWriter;
     this.random = new Random();
   }
 
-  public static void setNumberOfLanes(int n) {
-    nlanes = n;
-  }
-
   @Override
-  public Element login(String username, String password) throws IOException {
+  public Element login() throws IOException {
     return parseResponse("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-        + "<action-response action=\"login\" name=\"" + username + "\""
+        + "<action-response action=\"login\" name=\"" + Flag.username.value() + "\""
         + " password=\"...\">\n"
-        + "<success>" + username + "</success>\n"
+        + "<success>" + Flag.username.value() + "</success>\n"
         + "</action-response>");
   }
 
@@ -56,21 +48,39 @@ public class SimulatedClientSession extends ClientSession {
     }
 
     if (makeNewHeat) {
-      int laneMask = 0;
-      for (int lane = 0; lane < nlanes; ++lane) {
-        laneMask |= (1 << lane);
-      }
+      int nlanes = Flag.lanes.value();
+      int fullMask = (1 << nlanes) - 1;
+      int laneMask = fullMask;
 
-      int heats6 = numberOfHeatsPrepared % 6;
-      if (heats6 >= 2) {
-        int firstEmptyLane = random.nextInt(nlanes);
-        laneMask &= ~(1 << firstEmptyLane);
-        if (heats6 >= 4) {
-          int secondEmptyLane = random.nextInt(nlanes);
-          while (secondEmptyLane == firstEmptyLane) {
-            secondEmptyLane = random.nextInt(nlanes);
+      // nlanes fully populated heat, then:
+      //
+      // for firstBye = 0 to n
+      //   heat with just firstBye (1)
+      //   for secondBye = firstBye + 1 to n
+      //     heat with 2 byes
+      //
+      // Whole cycle is n(n-1)/2 + n + n heats,
+      // or n(n+3)/2
+      int cycle = nlanes * (nlanes + 3) / 2;
+      int index = numberOfHeatsPrepared % cycle;
+      if (index >= nlanes) {
+        int k = nlanes - 1;
+        for (int bye1 = 0; bye1 < nlanes; ++bye1) {
+          laneMask = fullMask & ~(1 << bye1);
+          ++k;
+          if (index == k) {
+            break;
           }
-        laneMask &= ~(1 << secondEmptyLane);
+          for (int bye2 = bye1 + 1; bye2 < nlanes; ++bye2) {
+            laneMask = fullMask & ~(1 << bye1) & ~(1 << bye2);
+            ++k;
+            if (index == k) {
+              break;
+            }
+          }
+          if (index == k) {
+            break;
+          }
         }
       }
 
@@ -80,7 +90,7 @@ public class SimulatedClientSession extends ClientSession {
           + " round=\"1\""
           + " roundid=\"" + (1 + random.nextInt(9)) + "\"/>\n";
 
-      logWriter.simulationLog("Simulating heat-ready with " +
+      LogWriter.simulationLog("Simulating heat-ready with " +
           LogWriter.laneMaskString(laneMask, nlanes));
       System.out.print("\t\t\t\t" + heatReadyString);
 

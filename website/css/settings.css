@@ -1,12 +1,12 @@
+input[type='text'], input[type='number'] {
+  font-family: sans-serif;
+}
+
 .settings_group {
     padding: 1em;
     border: 2px solid #666666;
     border-radius: 0.4em 0.4em 0.4em 0.4em;
     margin: 1em;
-}
-
-.settings_group.modified {
-    border: 2px solid #ff6666;
 }
 
 .settings_group .settings_group_image {

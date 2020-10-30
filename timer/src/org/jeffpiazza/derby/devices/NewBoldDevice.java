@@ -5,6 +5,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import jssc.SerialPort;
 import jssc.SerialPortException;
+import org.jeffpiazza.derby.Flag;
+import org.jeffpiazza.derby.LogWriter;
 import org.jeffpiazza.derby.Message;
 import org.jeffpiazza.derby.serialport.SerialPortWrapper;
 
@@ -26,13 +28,6 @@ public class NewBoldDevice extends TimerDeviceBase {
   //
   // < 0 means no reset is pending.
   private long timerResetMillis = -1;
-
-  // How long to wait after a race before sending the reset?
-  private static long postRaceDisplayDurationMillis = 5000;
-
-  public static void setPostRaceDisplayDurationMillis(long v) {
-    postRaceDisplayDurationMillis = v;
-  }
 
   @Override
   public boolean canBeIdentified() {
@@ -63,6 +58,9 @@ public class NewBoldDevice extends TimerDeviceBase {
   }
 
   @Override
+  public String getTimerIdentifier() { return null; }
+
+  @Override
   public void prepareHeat(int roundid, int heat, int laneMask)
       throws SerialPortException {
     // if (this.roundid == 0 && this.heat == 0) { ... }
@@ -86,27 +84,32 @@ public class NewBoldDevice extends TimerDeviceBase {
       while (!line.isEmpty()) {
         Matcher m = singleLanePattern.matcher(line);
         if (m.find()) {
+          has_ever_spoken = true;
           int lane = Integer.parseInt(m.group(1));
           String time = m.group(2);
-          TimerDeviceUtils.addOneLaneResult(lane, time, nresults, results);
+          if (lane != 0) {
+            // For DNF lanes, DerbyStick reports lane 0 and 0.0000 result.
+            TimerDeviceUtils.addOneLaneResult(lane, time, nresults, results);
+            LogWriter.serial("Lane " + lane + ": " + time + " seconds");
+          } else {
+            LogWriter.serial("DNF result");
+          }
           nresults++;
           line = m.group(3).trim();
-          portWrapper.logWriter().traceInternal(
-              "Lane " + lane + ": " + m.group(2) + " seconds");
         } else {
-          portWrapper.logWriter().traceInternal(
-              "* Unrecognized: [[" + line + "]]");
+          LogWriter.serial("* Unrecognized: [[" + line + "]]");
           break;
         }
       }
+      // If there are only DNFs, then the race is
       if (nresults > 0) {
         invokeRaceFinishedCallback(roundid, heat,
                                    (Message.LaneResult[]) results.toArray(
                                        new Message.LaneResult[results.size()]));
         roundid = heat = 0;
-        portWrapper.logWriter().traceInternal("Race finished!");
-        timerResetMillis
-            = System.currentTimeMillis() + postRaceDisplayDurationMillis;
+        LogWriter.serial("Race finished!");
+        timerResetMillis = System.currentTimeMillis()
+            + Flag.delay_reset_after_race.value() * 1000;
       }
     }
     if (timerResetMillis > 0 && System.currentTimeMillis() > timerResetMillis) {

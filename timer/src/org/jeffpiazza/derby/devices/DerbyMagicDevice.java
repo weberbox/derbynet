@@ -5,10 +5,15 @@ import org.jeffpiazza.derby.serialport.SerialPortWrapper;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jeffpiazza.derby.LogWriter;
+import org.jeffpiazza.derby.Message;
 
+// TODO: "R" responds with "Ready", which maybe means this timer CAN be identified.
+// More importantly, "V" responds with "Derby Magic v3.00" or some such.
 // http://www.derbymagic.com/files/Timer.pdf
 // http://www.derbymagic.com/files/GPRM.pdf
-public class DerbyMagicDevice extends TimerDeviceCommon {
+public class DerbyMagicDevice extends TimerDeviceCommon
+    implements RemoteStartInterface {
   private TimerResult result = null;
   private long timeOfFirstResult = 0;
 
@@ -27,18 +32,45 @@ public class DerbyMagicDevice extends TimerDeviceCommon {
 
   private static final int MAX_LANES = 8;
 
+  private static final String READ_VERSION = "V";
   private static final String TIMER_HAS_STARTED = "B";
 
   private static final String TIMER_RESET = "R";
   private static final String FORCE_DATA_SEND = "F";
 
+  private static final String TRIGGER_START_SOLENOID = "S";
+
   @Override
   public boolean canBeIdentified() {
-    return false;
+    return true;
   }
 
   public boolean probe() throws SerialPortException {
-    return probeAtSpeed(SerialPort.BAUDRATE_19200);
+    for (int baudrate : new int[]{9600, 19200}) {
+      if (!portWrapper.setPortParams(baudrate,
+                                     SerialPort.DATABITS_8,
+                                     SerialPort.STOPBITS_1,
+                                     SerialPort.PARITY_NONE,
+                                     /* rts */ false,
+                                     /* dtr */ false)) {
+        continue;
+      }
+
+      portWrapper.write(READ_VERSION);
+
+      long deadline = System.currentTimeMillis() + 1000;
+      String s;
+      while ((s = portWrapper.next(deadline)) != null) {
+        if (s.indexOf("Derby Magic") >= 0) {
+          timerIdentifier = s;
+          portWrapper.writeAndDrainResponse(TIMER_RESET, 1, 200);
+          setUp();
+          has_ever_spoken = true;
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   protected boolean probeAtSpeed(int baudrate) throws SerialPortException {
@@ -52,6 +84,7 @@ public class DerbyMagicDevice extends TimerDeviceCommon {
     }
 
     portWrapper.writeAndDrainResponse(TIMER_RESET, 1, 200);
+    timerIdentifier = portWrapper.writeAndWaitForResponse(READ_VERSION);
 
     setUp();
     return true;
@@ -68,9 +101,10 @@ public class DerbyMagicDevice extends TimerDeviceCommon {
     portWrapper.registerDetector(new SerialPortWrapper.Detector() {
       public String apply(String line) throws SerialPortException {
         if (line.equals(TIMER_HAS_STARTED)) {
-          portWrapper.logWriter().serialPortLogInternal("Detected gate opening");
+          LogWriter.serial("Detected gate opening");
           // This will be an unexpected state change, if it ever happens
           onGateStateChange(false);
+          has_ever_spoken = true;
           return "";
         }
         return line;
@@ -81,8 +115,8 @@ public class DerbyMagicDevice extends TimerDeviceCommon {
       public String apply(String line) throws SerialPortException {
         Matcher m = singleLanePattern.matcher(line);
         while (m.find()) {
-          portWrapper.logWriter().serialPortLogInternal(
-              "    Early detector match for (" + m.group() + ")");
+          has_ever_spoken = true;
+          LogWriter.serial("    Early detector match for (" + m.group() + ")");
           int lane = m.group(1).charAt(0) - '1' + 1;
           String time = m.group(2);
           int place = 0;
@@ -91,8 +125,7 @@ public class DerbyMagicDevice extends TimerDeviceCommon {
           }
 
           if (result == null) {
-            portWrapper.logWriter().serialPortLogInternal(
-                "*    No results were expected now.");
+            LogWriter.serial("*    No results were expected now.");
           } else {
             result.setLane(lane, time, place);
             if (timeOfFirstResult == 0) {
@@ -113,10 +146,23 @@ public class DerbyMagicDevice extends TimerDeviceCommon {
     });
   }
 
+  @Override
+  public boolean hasRemoteStart() {
+    return true;
+  }
+
+  @Override
+  public void remoteStart() throws SerialPortException {
+    portWrapper.write(TRIGGER_START_SOLENOID);
+  }
+
   protected void raceFinished() throws SerialPortException {
-    raceFinished(result.toArray());
+    Message.LaneResult[] resultArray = result.toArray();
     result = null;
     timeOfFirstResult = 0;
+    // raceFinished(LaneResult[]) may synchronously prepare a new heat,
+    // overwriting result member, so clear that before calling
+    raceFinished(resultArray);
     // Not sure what triggers it (possibly timer reset by switch?), but timer
     // sometimes sends a <n>=9.9999 for DNFs.  These don't have place info,
     // so don't match the early detector; instead they get put on the queue,

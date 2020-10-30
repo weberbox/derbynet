@@ -72,7 +72,9 @@ if (!have_permission(PHOTO_UPLOAD_PERMISSION)) {
              $photo['type'] != 'image/gif') {
     echo "<failure code=\"upload_image_type\">Unacceptable file type: ".$photo['type']."</failure>\n";
   } else {
-    $photo_name = basename($photo['name']);
+    $photo_name = basename(urldecode($photo['name']));
+    // Filter out special characters from the filename
+    $photo_name = preg_replace("/[^-a-zA-Z0-9 .]+/", "_", $photo_name);
     $target_name = $photo_name;
     $attempt = 1;
     while (file_exists($photo_dir.DIRECTORY_SEPARATOR.$target_name)) {
@@ -152,6 +154,8 @@ if (!have_permission(PHOTO_UPLOAD_PERMISSION)) {
           @unlink($photo_dir.DIRECTORY_SEPARATOR.$target_name);
           @unlink($cropped_path = $photo_repository->lookup(RENDER_CROPPED)->target_file_path($target_name));
           echo "<test-ok/>\n";
+        } else if ($_POST['barcode'] == 'PWDuploadonly') {
+          // Upload photo without associating with a racer
         } else {
           $racerid = barcode_to_racerid($_POST['barcode']);
           if (!$racerid) {

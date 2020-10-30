@@ -14,8 +14,8 @@ if (!isset($db)) {
 $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 //echo '<pre>'; print_r(PDO::getAvailableDrivers()); echo '</pre>';
-// On Mac, produces array('mysql', 'sqlite')
-// On Windows, produces array('mysql', 'odbc', 'sqlite')
+// On Mac, produces array('sqlite')
+// On Windows, produces array('odbc', 'sqlite')
 
 $dbtype = $db->getAttribute(PDO::ATTR_DRIVER_NAME);
 if ($dbtype == 'odbc') {
@@ -28,6 +28,18 @@ function dbnow_expr() {
     return "datetime('now', 'localtime')";
   } else {
     return "NOW()";
+  }
+}
+
+// Returns an expression suitable for comparing with 'completed' in RaceChart
+// $expr is an SQL expression that produces a value like '2013-11-14 14:57:14'
+// (PHP format 'Y-m-d H:i:s')
+function db_compare_completed($expr) {
+  global $dbtype;
+  if ($dbtype == 'sqlite') {
+    return "datetime($expr)";
+  } else if ($dbtype == 'access') {
+    return "CDate($expr)";
   }
 }
 
@@ -54,11 +66,12 @@ function inner_join() {
 }
 
 // Returns row with only numbered array elements
-function read_single_row($sql, $params = array()) {
+// (Use PDO::FETCH_ASSOC for named array elements)
+function read_single_row($sql, $params = array(), $fetch = PDO::FETCH_NUM) {
   global $db;
   $rs = $db->prepare($sql);
   $rs->execute($params);
-  $row = $rs->fetch(PDO::FETCH_NUM);
+  $row = $rs->fetch($fetch);
   $rs->closeCursor();
   return $row;
 }
@@ -98,6 +111,13 @@ function write_raceinfo($key, $val) {
 					   ':value' => $val));
 }
 
+function use_groups() {
+  return read_single_value('SELECT COUNT(*) FROM Classes') > 1;
+}
+
+function use_subgroups() {
+  return read_raceinfo_boolean('use-subgroups');
+}
 
 // GPRM sets these in "Advanced Settings", but they're not stored in the database.
 // Presumably they're in the Windows registry somewhere.
@@ -125,6 +145,16 @@ function supergroup_label_lc() {
 function use_master_sched() {
   return read_raceinfo_boolean('use-master-sched');
 }
+
+function image_base_dir() {
+  return  dirname(__FILE__, 2).DIRECTORY_SEPARATOR."Images";
+}
+function image_file_path($filename) {
+  return image_base_dir().DIRECTORY_SEPARATOR
+      .read_raceinfo("images-dir", 'Generic').DIRECTORY_SEPARATOR
+      .$filename;
+}
+
 function update_period() {
   return read_raceinfo('update-period', 2500);
 }
@@ -151,6 +181,10 @@ function get_lane_count_from_results() {
   }
 }
 
+function get_finishtime_formatting_string() {
+  return read_raceinfo('finish-formatting', '%5.3f');
+}
+
 
 // Returns the highest ResultID from the RaceChart table.
 // Assuming this increases monotonically, a newly scheduled
@@ -174,11 +208,16 @@ function high_water_rounds() {
 			   'round' => $rs[1]);
 }
 
+// When performing timer test heats, the current roundid is set to this value,
+// and the current heat is relatively arbitrary (counts up from 1).
+define('TIMER_TEST_ROUNDID', -100);
+
 // Returns an array value with elements for { classid => , roundid => , heat => }
 // describing the currently-running round and heat.
 function get_running_round() {
   global $db;
   $config = array('use_master_sched' => 0,
+                  'use_points' => 0,
                   'now_racing' => 0,
 				  'class' => '',
 				  'roundid' => -1);  // May be overwritten
@@ -197,23 +236,29 @@ function get_running_round() {
     // TODO: use-master-sched key => UseMasterSched
     else if ($key == 'use-master-sched')
       $config['use_master_sched'] = $val ? 1 : 0;
+    else if ($key == 'use-points')
+      $config['use_points'] = $val ? 1 : 0;
     else if ($key == 'NowRacingState')
       $config['now_racing'] = $val ? 1 : 0;
   }
 
-  $stmt = $db->prepare('SELECT round, class'
-					 .' FROM Rounds'
-					 .' INNER JOIN Classes'
-					 .' ON Rounds.classid = Classes.classid'
-					 .' WHERE roundid = :roundid'
-					 .' AND Rounds.classid = :classid');
-  $stmt->execute(array(':roundid' => @$config['roundid'],
-					   ':classid' => @$config['classid']));
-  $rs = $stmt->fetch(PDO::FETCH_ASSOC);
-//  if ($rs)
- {
-    $config['class'] = $rs['class'];
-    $config['round'] = $rs['round'];
+  if (@$config['roundid'] == TIMER_TEST_ROUNDID) {
+    $config['class'] = 'Timer Test';
+    $config['round'] = @$config['heat'];
+  } else if (@$config['roundid']) {
+    $stmt = $db->prepare('SELECT round, class'
+                         .' FROM Rounds'
+                         .' INNER JOIN Classes'
+                         .' ON Rounds.classid = Classes.classid'
+                         .' WHERE roundid = :roundid'
+                         .' AND Rounds.classid = :classid');
+    $stmt->execute(array(':roundid' => @$config['roundid'],
+                         ':classid' => @$config['classid']));
+    $rs = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($rs !== false) {
+      $config['class'] = $rs['class'];
+      $config['round'] = $rs['round'];
+    }
   }
 
   return $config;
@@ -223,12 +268,24 @@ function get_running_round() {
 // Prix Race Manager, but GPRM is actually running the race.
 //
 // By default, if using an Access (ODBC) database, we assume we're running with GPRM.
-function with_gprm() {
+function warn_no_timer() {
   global $dbtype;
-  return read_raceinfo('with-gprm', $dbtype == 'access');
+  $count = read_single_value('SELECT COUNT(*) FROM RaceInfo WHERE itemkey = :key',
+                             array(':key' => 'warn-no-timer'));
+  if ($count > 0) {
+    return read_raceinfo('warn-no-timer', true);
+  } else {
+    // This used to be stored as 'with-gprm', with the opposite sense
+    return ! read_raceinfo('with-gprm', $dbtype == 'access');
+  }
 }
 
 function is_windows_server() {
   return strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
+}
+
+function is_no_such_table_exception(/* PDOException */ $p) {
+  return $p->getCode() == '42S02' ||
+      ($p->getCode() == 'HY000' && stripos($p->getMessage(), "no such table") !== false);
 }
 ?>

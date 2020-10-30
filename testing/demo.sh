@@ -12,7 +12,7 @@ user_login_coordinator
 while true ; do
   curl_post action.php "action=database.execute&script=schema" | check_success
   curl_post action.php "action=database.execute&script=update-schema" | check_success
-  curl_post action.php "action=settings.write&show-racer-photos=1&show-racer-photos-checkbox=1" | check_success
+  curl_post action.php "action=settings.write&photos-on-now-racing=head" | check_success
 
   # kiosk page will re-poll every 5s
   sleep 6s
@@ -56,7 +56,7 @@ while true ; do
   curl_post action.php "action=kiosk.assign&all=kiosks/ondeck.kiosk" | check_success
 
   # Start racing
-  curl_post action.php "action=select-heat&now_racing=1&roundid=1" | check_success
+  curl_post action.php "action=heat.select&now_racing=1&roundid=1" | check_success
 
   user_login_timer
   sleep 1s

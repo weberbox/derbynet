@@ -1,10 +1,14 @@
 <?php
 // Adding a class:
 // $_POST['name']
+// Optional $_POST['constituent_' + classid] for each constituent classid
+// Optional $_POST['ntrophies']
 
 require_once('inc/schema_version.inc');
 require_once('inc/sql-script.inc');
 require_once(sql_file_path('column-widths'));
+require_once('inc/newracer.inc');
+require_once('inc/classes.inc');
 
 start_response();
 
@@ -14,48 +18,39 @@ if (have_permission(SET_UP_PERMISSION)) {
     if ($classname == '') {
       echo "<failure code='noname'>No name provided for the new ".group_label()."</failure>\n";
     } else {
-      $stmt = $db->prepare('INSERT INTO Classes(class) VALUES(:name)');
-      $stmt->execute(array(':name' => $classname));
-
-      $classid = read_single_value('SELECT classid FROM Classes WHERE class = :classname',
-                                   array(':classname' => $classname));
-      if (schema_version() >= 2) {
-        $nclasses = read_single_value('SELECT COUNT(*) FROM Classes');
+      list($classes, $classseq, $ranks, $rankseq) = classes_and_ranks();
+      $constituents = array();
+      $rankids = array();
+      foreach ($_POST as $key => $value) {
+        if (substr($key, 0, strlen('constituent_')) == 'constituent_') {
+          $constituents[] = substr($key, strlen('constituent_'));
+        } else if (substr($key, 0, strlen('rankid_')) == 'rankid_') {
+          $r = substr($key, strlen('rankid_'));
+          $rankids[] = $r;
+          $constituents[] = $ranks[$r]['classid'];
+        }
+        $constituents = array_unique($constituents);
+      }
+      if (empty($constituents)) {  // Normal class
+        $classid = create_class($classname);
+        // Manufacture a "generic" rank name for this class.  It isn't really
+        // well-defined to be creating a class without a rank if we're actually
+        // using rank names.
+        $rankid = find_or_create_rank($classname, $classid);
+      } else {  // Aggregate class
+        $classid = create_class($classname, /*with_first_round=*/false);
         $stmt = $db->prepare('UPDATE Classes'
-                             .' SET sortorder = :nclasses'
+                             .' SET constituents = :constituents,'
+                             .' rankids = :rankids,'
+                             .' durable = 1'
                              .' WHERE classid = :classid');
-        $stmt->execute(array(':classid' => $classid,
-                             ':nclasses' => $nclasses));
+        $stmt->execute(array(':constituents' => implode(',', $constituents),
+                             ':rankids' => implode(',', $rankids),
+                             ':classid' => $classid));
       }
-
-      // Creating a class usually requires creating a corresponding 1st racing round
-      $stmt = $db->prepare('INSERT INTO Rounds(round, classid)'
-                           .' SELECT 1, classid'
-                           .' FROM Classes'
-                           .' WHERE classid = :classid'
-                           .' AND NOT EXISTS(SELECT 1 FROM Rounds'
-                           .'  WHERE Rounds.classid = Classes.classid'
-                           .'    AND Rounds.round = 1)');
-
-      $stmt->execute(array(':classid' => $classid));
-
-      // Manufacture a "generic" rank name for this class.  It isn't really
-      // well-defined to be creating a class without a rank if we're actually
-      // using rank names.
-      $stmt = $db->prepare('INSERT INTO Ranks(rank, classid) VALUES(:rankname, :classid)');
-      $stmt->execute(array(':rankname' => $classname,
-                           ':classid' => $classid));
-
-      if (schema_version() >= 2) {
-        $nranks = read_single_value('SELECT COUNT(*) FROM Ranks WHERE classid = :classid',
-                                    array(':classid' => $classid));
-        $stmt = $db->prepare('UPDATE Ranks'
-                             .' SET sortorder = :nranks'
-                             .' WHERE rankid = :rankid');
-        $stmt->execute(array(':nranks' => $nranks,
-                             ':rankid' => $rankid));
+      if (isset($_POST['ntrophies'])) {
+        update_ntrophies($classid, $_POST['ntrophies']);
       }
-
       echo "<success/>\n";
     }
   } else {

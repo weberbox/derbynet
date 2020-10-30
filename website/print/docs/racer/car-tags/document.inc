@@ -11,7 +11,8 @@ class CarTagsDocument extends PrintableRacerDocument {
 
   function get_available_options() {
     return array('rank_image' => array('type' => 'bool',
-                                       'desc' => 'Draw icon for rank',
+                                       'desc' => 'Draw icon for rank'
+                                               .' (based on car number, 100-199=Tiger, etc.)',
                                        'default' => true));
   }
   
@@ -36,7 +37,7 @@ class CarTagsDocument extends PrintableRacerDocument {
     $this->pdf->SetFont('Times', '', 15);
     $this->pdf->RotatedCenteredText($left + 1.1, 2.75,  $racer['carname']);
 
-    if ($this->get_option('rank_image')) {
+    if ($this->get_option('rank_image') && is_dir(image_file_path("ranks"))) {
       // 2-inch rank image
       $this->pdf->SetXY($left, 5.5);
       $this->pdf->SetFont('Arial', '', 16);
@@ -64,8 +65,8 @@ class CarTagsDocument extends PrintableRacerDocument {
   // instead, and assuming that the hundreds digit identifies which image is
   // desired.
   static protected function path_to_rank_image(&$racer) {
-    $grade = min(5, intval($racer['carnumber'] / 100));
-    return dirname(__FILE__) . '/cub-scout-ranks/' . $grade . '00-series.jpg';
+    $grade = min(6, intval($racer['carnumber'] / 100));
+    return image_file_path("ranks".DIRECTORY_SEPARATOR. $grade . '00-series.jpg');
   }
 
   protected function RotatedCenteredName($cx, $cy, &$racer) {

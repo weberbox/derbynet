@@ -47,22 +47,22 @@ public class RacingStateMachine {
   // the start gate's state.  For some timers, though, we never know whether the
   // gate is opened or closed, and so have to modify our behavior accordingly.
   private boolean gate_state_is_knowable;
+  // If the gate state is not knowable, then GATE_OPENED and GATE_CLOSED events
+  // are not expected, and the state machine effectively alternates between IDLE
+  // and MARK states.  GIVING_UP event doesn't happen, either, because it
+  // can arise only from a RESULTS_OVERDUE state.
 
   private TransitionCallback transition_callback;
-  private LogWriter logWriter;
   private long stateEnteredMillis = 0;
 
   public RacingStateMachine(boolean gate_state_is_knowable,
-                            TransitionCallback transition_callback,
-                            LogWriter logWriter) {
+                            TransitionCallback transition_callback) {
     this.gate_state_is_knowable = gate_state_is_knowable;
     this.transition_callback = transition_callback;
-    this.logWriter = logWriter;
   }
 
-  public RacingStateMachine(TransitionCallback transition_callback,
-                            LogWriter logWriter) {
-    this(true, transition_callback, logWriter);
+  public RacingStateMachine(TransitionCallback transition_callback) {
+    this(true, transition_callback);
   }
 
   // Number of milliseconds we've been in the current state
@@ -184,19 +184,22 @@ public class RacingStateMachine {
         transition_callback.onTransition(initialState, currentState);
       }
       System.out.println(initialState + " >--" + e + "--> " + currentState);
-      logWriter.serialPortLogInternal(
-          initialState + " >--" + e + "--> " + currentState);
+      LogWriter.serial(initialState + " >--" + e + "--> " + currentState);
     }
     return currentState;
   }
 
   private void unexpected(Event e) {
-    logWriter.serialPortLogInternal("Unexpected event: " + e);
+    LogWriter.serial("Unexpected event: " + e);
   }
 
   private State unexpected(Event e, State next) {
-    logWriter.serialPortLogInternal(
-        "Unexpected transition: " + currentState + " >--" + e + "--> " + next);
+    LogWriter.serial("Unexpected transition: " +
+        currentState + " >--" + e + "--> " + next);
     return next;
+  }
+
+  public void setGateStateNotKnowable() {
+    gate_state_is_knowable = false;
   }
 }

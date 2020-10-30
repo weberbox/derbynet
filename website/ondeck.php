@@ -14,7 +14,6 @@ require_once('inc/photo-config.inc');
 require_once('inc/name-mangler.inc');
 require_once('inc/schema_version.inc');
 require_once('inc/running_round_header.inc');
-require_permission(VIEW_RACE_RESULTS_PERMISSION);
 
     $nlanes = get_lane_count_from_results();
     $now_running = get_running_round();
@@ -30,13 +29,14 @@ require_permission(VIEW_RACE_RESULTS_PERMISSION);
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
 <script type="text/javascript" src="js/jquery.js"></script>
+<script type="text/javascript" src="js/ajax-setup.js"></script>
+<script type="text/javascript" src="js/modal.js"></script>
 <?php if (isset($as_kiosk)) {
   require_once('inc/kiosk-poller.inc');
   echo "<style type='text/css'>\n";
   echo "body { overflow: hidden; }\n";
   echo "</style>\n";
 }?>
-<?php require_once('inc/ajax-failure.inc'); ?>
 <script type="text/javascript">
 var g_update_status = {
       last_update_time: "", // First refresh is for everything
@@ -46,8 +46,24 @@ var g_update_status = {
       use_master_sched: <?php echo $use_master_sched ? 1 : 0; ?>,
       merge_rounds: <?php echo $use_master_sched ? 1 : 0; ?>,
 };
+// False if auto-scrolling should center the NEXT heat (the default), true if we
+// should scroll to focus on the current heat.
+var g_focus_current = <?php echo isset($_GET['focus_current']) ? "true" : "false"; ?>;
 </script>
-<script type="text/javascript" src="js/update.js"></script>
+<script type="text/javascript" src="js/common-update.js"></script>
+<script type="text/javascript" src="js/ondeck-update.js"></script>
+<script type="text/javascript">
+
+function handle_row_click(tr) {
+  $(tr).toggleClass('exposed');
+}
+
+function handle_photo_click(img) {
+  $("#photo_view_img").attr('src', $(img).attr('data-img'));
+  show_modal("#photo_view_modal", function() {});
+}
+
+</script>
 <title>Race Schedule</title>
 <?php require('inc/stylesheet.inc'); ?>
 <link rel="stylesheet" type="text/css" href="css/kiosks.css"/>
@@ -114,7 +130,8 @@ function write_heat_row($entry, $heat_row, $lane) {
     $heat_row .= byes($nlanes - $lane + 1);
     $heat = $entry['heat'];
     $heat_label = 'heat_'.$entry['roundid'].'_'.$heat;
-    echo '<tr id="'.$heat_label.'" class="d'.($row_counter & 1).'">'
+    echo '<tr id="'.$heat_label.'" class="heat_row d'.($row_counter & 1).'"'
+            .' onclick="handle_row_click(this);">'
       .'<th>'
       .htmlspecialchars(($use_master_sched ? $entry['class'].' ' : '')
                         .'Heat '.$heat, ENT_QUOTES, 'UTF-8')
@@ -143,7 +160,7 @@ foreach ($groups as $group) {
   echo '<tr><th/><th class="group_spacer wide" colspan="'.$nlanes.'"/></tr>'."\n";
   echo '<tr><th class="pre_group_title"/>'
       .'<th class="group_title wide" colspan="'.$nlanes.'">'
-      .htmlspecialchars($group['groupname'], ENT_QUOTES, 'UTF-8').'</th>'
+      .htmlspecialchars($group['roundname'], ENT_QUOTES, 'UTF-8').'</th>'
       .'</tr>'."\n";
 
   // Draw a new set of lane headers.
@@ -185,16 +202,18 @@ foreach ($groups as $group) {
       // Add the cell with the result we just got.
       // $ft = $rs['finishtime'];
       $heat_row .= '<td class="lane_'.$lane.' resultid_'.$rs['resultid'].'">';
-      $heat_row .= '<a class="racer_link" href="racer-results.php?racerid='.$rs['racerid'].'">'
-        .'<span class="car">'.htmlspecialchars($rs['carnumber'], ENT_QUOTES, 'UTF-8').'</span><br/>'."\n"
-        .'<span class="racer">('
-        .htmlspecialchars(mangled_name($rs, $name_style), ENT_QUOTES, 'UTF-8').')</span><br/>'."\n"
-		.'<span class="time"></span>' // Javascript will fill in the times, later
-      .'</a>';
+      // $heat_row .= '<a class="racer_link" href="racer-results.php?racerid='.$rs['racerid'].'">';
+      $heat_row .= '<span class="car">'.htmlspecialchars($rs['carnumber'], ENT_QUOTES, 'UTF-8').'</span><br/>'."\n";
+      $heat_row .= '<span class="racer">('
+          .htmlspecialchars(mangled_name($rs, $name_style), ENT_QUOTES, 'UTF-8').')</span><br/>'."\n";
+      $heat_row .= '<span class="time"></span>'; // Javascript will fill in the times, later
+      // $heat_row .= '</a>';
       $heat_row .= '<div class="ondeck_photo unpopulated">';
       if ($show_car_photos && isset($rs['carphoto']) && $rs['carphoto']) {
         $photos_in_heat = true;
-        $heat_row .= '<img src="'.$repo->url_for_racer($rs, RENDER_ONDECK).'"/>';
+        $heat_row .= '<img src="'.$repo->url_for_racer($rs, RENDER_ONDECK).'"'
+                    .' data-img="'.$repo->url_for_racer($rs, RENDER_WORKING).'"'
+                    .' onclick="handle_photo_click(this)"/>';
       }
       $heat_row .= '</div>';
 
@@ -216,5 +235,15 @@ foreach ($groups as $group) {
 $stmt->closeCursor();
 ?>
 </table>
+
+<?php require_once('inc/ajax-failure.inc'); ?>
+
+<div id='photo_view_modal' class="modal_dialog hidden block_buttons">
+  <img id='photo_view_img'/>
+  <br/>
+  <input type="button" value="Close"
+    onclick='close_modal("#photo_view_modal");'/>
+</div>
+
 </body>
 </html>

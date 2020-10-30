@@ -1,8 +1,9 @@
 <?php
-function emit_current_heat(&$now_running, $use_master_sched) {
+function emit_current_heat(&$now_running) {
   echo '<current-heat'
     .' now-racing="'.@$now_running['now_racing'].'"'
     .' use-master-sched="'.@$now_running['use_master_sched'].'"'
+    .' use-points="'.@$now_running['use_points'].'"'
     .' classid="'.@$now_running['classid'].'"'
     .' roundid="'.@$now_running['roundid'].'"'
     .' round="'.@$now_running['round'].'"'
@@ -12,7 +13,9 @@ function emit_current_heat(&$now_running, $use_master_sched) {
                                             .' WHERE roundid = :roundid',
                                             array(':roundid' => @$now_running['roundid'])).'"'
     .'>';
-  echo htmlspecialchars(@$now_running['class'], ENT_QUOTES, 'UTF-8');
+  if (use_groups()) {
+    echo htmlspecialchars(@$now_running['class'], ENT_QUOTES, 'UTF-8');
+  }
   echo "</current-heat>\n";
 }
 ?>

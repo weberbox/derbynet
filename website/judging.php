@@ -11,15 +11,15 @@ require_permission(JUDGING_PERMISSION);
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
 <title>Award Judging</title>
 <script type="text/javascript" src="js/jquery.js"></script>
-<script type="text/javascript" src="js/jquery-ui-1.10.4.min.js"></script>
+<script type="text/javascript" src="js/ajax-setup.js"></script>
+<script type="text/javascript" src="js/jquery-ui.min.js"></script>
 <script type="text/javascript" src="js/jquery.ui.touch-punch.min.js"></script>
 <script type="text/javascript" src="js/dashboard-ajax.js"></script>
-<!-- jquery.mobile on this page ONLY for the text input in ad hoc award -->
-<script type="text/javascript" src="js/mobile-init.js"></script>
-<script type="text/javascript" src="js/jquery.mobile-1.4.2.min.js"></script>
+<script type="text/javascript" src="js/mobile.js"></script>
 <script type="text/javascript" src="js/modal.js"></script>
 <script type="text/javascript" src="js/judging.js"></script>
-<link rel="stylesheet" type="text/css" href="css/jquery.mobile-1.4.2.css"/>
+<link rel="stylesheet" type="text/css" href="css/jquery-ui.min.css"/>
+<link rel="stylesheet" type="text/css" href="css/mobile.css"/>
 <?php require('inc/stylesheet.inc'); ?>
 <link rel="stylesheet" type="text/css" href="css/judging.css"/>
 </head>
@@ -78,8 +78,11 @@ foreach ($db->query($sql) as $rs) {
 
 ?>
 <div id="top_matter" class="block_buttons">
+  <div id="dd-prompt">
+Drag awards to racers,<br/>or racers to awards.
+  </div>
   <div id="sort_controls">
-    Sort racers by
+    Sort racers by:<br/>
     <?php link_for_ordering('name', "name,"); ?>
     <?php link_for_ordering('class', group_label_lc().","); ?> or
     <?php link_for_ordering('car', "car number"); ?>.
@@ -88,14 +91,16 @@ foreach ($db->query($sql) as $rs) {
 </div>
 
 <div id="awards">
-  <ul data-rolex="listview">
+  <p id="awards-empty">There are currently no awards defined.</p>
+  <ul>
   </ul>
 </div>
 
 <div id="racers">
   <?php
 
-  $use_subgroups = read_raceinfo_boolean('use-subgroups');
+  $use_groups = use_groups();
+  $use_subgroups = use_subgroups();
 
   foreach ($racers as $racer) {
     echo "<div class='judging_racer' data-racerid='".$racer['racerid']."' onclick='show_racer_awards_modal($(this));'>\n";
@@ -108,9 +113,11 @@ foreach ($db->query($sql) as $rs) {
 
 
     echo "<div class='racer_name'>".htmlspecialchars($racer['firstname'].' '.$racer['lastname'], ENT_QUOTES, 'UTF-8')."</div>";
-    echo "<div class='group_name' data-classid='".$racer['classid']."'>"
-        .htmlspecialchars($racer['class'], ENT_QUOTES, 'UTF-8')
-    ."</div>";
+    echo "<div class='group_name' data-classid='".$racer['classid']."'>";
+    if ($use_groups) {
+      echo htmlspecialchars($racer['class'], ENT_QUOTES, 'UTF-8');
+    }
+    echo "</div>";
     if ($use_subgroups) {
       echo "<div class='subgroup_name' data-rankid='".$racer['rankid']."'>"
           .htmlspecialchars($racer['rank'], ENT_QUOTES, 'UTF-8')
@@ -137,8 +144,8 @@ foreach ($db->query($sql) as $rs) {
     <label for="awardname"><i>Ad hoc</i> award:</label>
     <input type="text" name="awardname" id="racer_awards_awardname"/>
 
-    <input type="submit" data-enhanced="true"/>
-    <input type="button" value="Close" data-enhanced="true"
+    <input type="submit"/>
+    <input type="button" value="Close"
            onclick='close_racer_awards_modal();'/>
   </form>
 </div>

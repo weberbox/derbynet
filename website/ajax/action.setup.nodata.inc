@@ -34,10 +34,7 @@ function attempt_to_connect_to_database($connection_string, $dbuser, $dbpass, $o
     $result['pdo'] = new PDO($connection_string, $dbuser, $dbpass, $options);
   } catch (PDOException $p) {
     $result['exception'] = $p;
-    if ($p->getCode() == "1045") {
-      // MySQL SQLSTATE[HY000] [1045] Access denied for user ''@'localhost' (using password: NO)"
-      $result['error'] = 'access_denied';
-    } else if ($p->getCode() == 14) {
+    if ($p->getCode() == 14) {
       // TODO For sqlite, a bad path (non-existent directory)
       //   SQLSTATE[HY000] [14] unable to open database file
       $result['error'] = 'no_such_directory';
@@ -100,6 +97,7 @@ if (locked_settings()) {
   // these variables.
   $racers_subdir = '';
   $cars_subdir = '';
+  $videos_subdir = '';
   $new_database_path = '';
 
   if (isset($_POST['ez-new']) && $_POST['ez-new'] != "") {
@@ -128,6 +126,7 @@ if (locked_settings()) {
     // database is opened and initialized.
     $racers_subdir = $directory . DIRECTORY_SEPARATOR . 'racers';
     $cars_subdir = $directory . DIRECTORY_SEPARATOR . 'cars';
+    $videos_subdir = $directory . DIRECTORY_SEPARATOR . 'videos';
     if ($ok) {
       if (!@mkdir($racers_subdir)) {
         echo '<failure code="cannot_mkdir_racers">Unable to create racers subdirectory.</failure>'."\n";
@@ -137,6 +136,12 @@ if (locked_settings()) {
     if ($ok) {
       if (!@mkdir($cars_subdir)) {
         echo '<failure code="cannot_mkdir_cars">Unable to create cars subdirectory.</failure>'."\n";
+        $ok = false;
+      }
+    }
+    if ($ok) {
+      if (!@mkdir($videos_subdir)) {
+        echo '<failure code="cannot_mkdir_videos">Unable to create videos subdirectory.</failure>'."\n";
         $ok = false;
       }
     }
@@ -167,9 +172,6 @@ if (locked_settings()) {
 
   if ($ok) {
     $options = array();
-    if (defined('PDO::MYSQL_ATTR_INIT_COMMAND')) {
-      $options[PDO::MYSQL_ATTR_INIT_COMMAND] = "SET NAMES utf8";
-    }
 
     $trial = attempt_to_connect_to_database($connection_string, $dbuser, $dbpass, $options);
     if ($trial['pdo']) {
@@ -247,6 +249,9 @@ if (locked_settings()) {
     }
     if ($cars_subdir != '') {
       write_raceinfo('car-photo-directory', $cars_subdir);
+    }
+    if ($videos_subdir != '') {
+      write_raceinfo('video-directory', $videos_subdir);
     }
 
     echo "<success/>\n";

@@ -16,6 +16,11 @@ OUTPUT_CURL="`dirname $0`/output.curl"
 DEBUG_CURL="`dirname $0`/debug.curl"
 COOKIES_CURL="`dirname $0`/cookies.curl"
 
+function header() {
+    echo '###################### ' `caller 1 | cut -f3 -d\ ` ' #######################'
+}
+header
+
 function stacktrace() {
     while caller $((n++)); do :; done;
 }
@@ -70,7 +75,24 @@ function curl_photo() {
     if [ $OK -eq 0 ]; then
         test_fails Wrong photo result: $PHOTO_MD5
     fi
- }   
+}
+
+# curl_photo checks the MD5 digest of the photo that's returned, but for many photo manipulations,
+# the digest depends on the exact PHP and library versions used.  curl_photo_any just tests that
+# we get some kind of picture and not a failure.
+#
+# curl_photo_any $1=url_tail
+function curl_photo_any() {
+    echo ' ' ' ' ' ' photo_any $1 >&2
+    echo    >> $OUTPUT_CURL
+    echo photo $1 >> $OUTPUT_CURL
+    echo    >> $OUTPUT_CURL
+
+    COUNT=`curl --location -s -b $COOKIES_CURL -c $COOKIES_CURL $BASE_URL/photo.php/$1 | wc -c`
+    if [ $COUNT -lt 1000 ]; then
+        test_fails No photo result for $1
+    fi
+}
 
 function curl_put_snapshot() {
     echo ' ' ' ' ' ' snapshot.put $1 >&2
@@ -157,6 +179,12 @@ function expect_one {
 	if [ "`grep -c "$1"`" -ne 1 ]; then
         test_fails expecting an occurrence of $1
 	fi
+}
+
+function expect_eq {
+    if [ "`cat`" != "$1" ]; then
+        test_fails expecting string "$1"
+    fi
 }
 
 # Confirm what roundid/heat is current and simulate timer interaction for running one heat

@@ -31,16 +31,18 @@ class DriversLicenseDocument extends PrintableRacerDocument {
     // $this->DrawBannerText($x, $y);
 
     // Logo in the lower left
-    $this->pdf->Image(dirname(__FILE__).'/cubscout_emblem_300.png',
+    $this->pdf->Image(image_file_path('emblem.png'),
                       $x + 0.05, $y + 1.95, 0.5, 0.5);
 
     $this->pdf->DrawSequence($x + 0.25, $y + 0.7,
                              array(new SetFontTag('Times', '', 14), $racer['firstname']." ",
                                    new SetFontTag('Times', 'B', 14), $racer['lastname']));
 
-    $this->pdf->DrawSequence($x + 0.25, $y + 0.90,
-                             array(new SetFontTag('Times', '', 10), group_label().": ",
-                                   new SetFontTag('Times', 'B', 10), $racer['class']));
+    if (use_groups()) {
+      $this->pdf->DrawSequence($x + 0.25, $y + 0.90,
+                               array(new SetFontTag('Times', '', 10), group_label().": ",
+                                     new SetFontTag('Times', 'B', 10), $racer['class']));
+    }
 
     if (!$this->get_option('use_photo')) {
     } else if ($racer['imagefile']) {

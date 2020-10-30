@@ -1,11 +1,9 @@
 <!DOCTYPE html>
 <html>
-<?php
-require_once('inc/photo-config.inc');
-?>
+<?php require_once('inc/photo-config.inc'); ?>
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
-    <title>DerbyNet Software</title>
+    <title>DerbyNet Slideshow</title>
     <script type="text/javascript" src="js/jquery.js"></script>
 <?php require('inc/kiosk-poller.inc'); ?>
 <?php require('inc/stylesheet.inc'); ?>
@@ -17,6 +15,7 @@ require_once('inc/photo-config.inc');
   <body>
 
   <div id="photo-background" class="photo-background">
+    <div class="next"></div>
   </div>
 
   </body>

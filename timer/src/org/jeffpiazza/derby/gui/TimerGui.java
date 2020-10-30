@@ -1,13 +1,11 @@
 package org.jeffpiazza.derby.gui;
 
-import jssc.SerialPort;
-import org.jeffpiazza.derby.*;
-import org.jeffpiazza.derby.devices.TimerDevice;
-
-import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import javax.swing.*;
+import org.jeffpiazza.derby.*;
+import org.jeffpiazza.derby.devices.TimerDevice;
 import org.jeffpiazza.derby.devices.TimerTask;
 
 // On the HTTP side, the GUI makes this approximate progression:
@@ -20,8 +18,6 @@ import org.jeffpiazza.derby.devices.TimerTask;
 // Command-line arguments may let us skip some of these steps.
 public class TimerGui {
   private Components components;
-  private HttpTask.MessageTracer traceMessages;
-  private HttpTask.MessageTracer traceHeartbeats;
   private Connector connector;
   private RoleFinder roleFinder;
   private boolean rolesPopulated = false;
@@ -29,13 +25,9 @@ public class TimerGui {
   private TimerClassListController timerClassListController;
   private SerialPortListController portListController;
 
-  public TimerGui(HttpTask.MessageTracer traceMessages,
-                  HttpTask.MessageTracer traceHeartbeats,
-                  Connector connector) {
+  public TimerGui(Connector connector) {
     this.components = new Components();
     this.connector = connector;
-    this.traceMessages = traceMessages;
-    this.traceHeartbeats = traceHeartbeats;
     timerClassListController = new TimerClassListController(
         components.timerClassList);
     components.timerClassList.addListSelectionListener(timerClassListController);
@@ -63,6 +55,12 @@ public class TimerGui {
       @Override
       public void actionPerformed(ActionEvent e) {
         TimerGui.this.onScanButtonClick();
+      }
+    });
+    components.showLogFileMenuItem.addActionListener(new ActionListener() {
+      @Override
+      public void actionPerformed(ActionEvent e) {
+        LogWriter.showLogFile();
       }
     });
 
@@ -187,11 +185,13 @@ public class TimerGui {
     } else // There's an existing roleFinder for the current URL, and the user
     // clicked "Connect."  If we're still waiting for the roles to
     // populate, then ignore the button, otherwise start a login request
-     if (rolesPopulated()) {
+    {
+      if (rolesPopulated()) {
         startHttpTask(roleFinder.getSession());
       } else {
         setHttpStatus("(Hold your horses)", black, icon_unknown);
       }
+    }
   }
 
   // Start a separate thread to contact the server and ask it for the available
@@ -209,10 +209,7 @@ public class TimerGui {
 
   private void startHttpTask(ClientSession clientSession) {
     setHttpStatus("Logging in...", black, icon_unknown);
-    HttpTask.start(components.roleComboBox.getItemAt(
-        components.roleComboBox.getSelectedIndex()),
-                   new String(components.passwordField.getPassword()),
-                   clientSession, traceMessages, traceHeartbeats,
+    HttpTask.start(                   clientSession,
                    connector,
                    new HttpTask.LoginCallback() {
                  @Override
@@ -237,6 +234,9 @@ public class TimerGui {
   // been added to the role combobox
   public synchronized void rolesComplete() {
     setRolesPopulated(true);
+    // Try logging in to the first role with an empty password -- almost always
+    // works, and makes for one less thing for the operator to have to do.
+    onConnectButtonClick();
     setHttpStatus("Please log in", black, icon_unknown);
     components.roleComboBox.setEnabled(true);
     components.passwordField.setEnabled(true);
@@ -260,7 +260,8 @@ public class TimerGui {
     portListController.markSerialPortWontOpen();
   }
 
-  public void updateTimerClasses(TimerTask timerTask, Class<? extends TimerDevice>[] timerClasses) {
+  public void updateTimerClasses(TimerTask timerTask,
+                                 Class<? extends TimerDevice>[] timerClasses) {
     timerClassListController.updateTimerClasses(timerTask, timerClasses);
   }
 
@@ -272,10 +273,14 @@ public class TimerGui {
     System.out.println("Scan/Stop Scanning button not implemented");
   }
 
-  public void confirmDevice() {
+  public void confirmDevice(boolean confirmed) {
     components.portList.setSelectionBackground(green);
     components.timerClassList.setSelectionBackground(green);
-    setSerialStatus("Timer device identified", green, icon_ok);
+    if (confirmed) {
+      setSerialStatus("Timer device identified", green, icon_ok);
+    } else {
+      setSerialStatus("Timer device unconfirmed", red, icon_unknown);
+    }
     // TODO components.scanButton.setVisible(false);
   }
 

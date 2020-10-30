@@ -3,11 +3,12 @@ package org.jeffpiazza.derby.devices;
 import java.util.regex.Matcher;
 import jssc.SerialPort;
 import jssc.SerialPortException;
+import org.jeffpiazza.derby.LogWriter;
 import org.jeffpiazza.derby.Message;
 import org.jeffpiazza.derby.serialport.SerialPortWrapper;
 
-// This device class supports older FastTrack devices that don't accept (i.e.,
-// are deaf to) commands from the host.
+// This device class supports older FastTrack devices, i.e., P-series, that
+// don't accept (i.e., are deaf to) commands from the host.
 //
 // From http://www.microwizard.com/faq.html:
 //
@@ -37,7 +38,7 @@ public class OlderFastTrackDevice extends TimerDeviceBase {
   public static final int MAX_LANES = 6;
 
   public static String toHumanString() {
-    return "Older FastTrack";
+    return "Older FastTrack (P series)";
   }
 
   @Override
@@ -57,6 +58,8 @@ public class OlderFastTrackDevice extends TimerDeviceBase {
       return false;
     }
 
+    MicroWizard.readFeatures(portWrapper);
+
     setUp();
     return true;
   }
@@ -66,6 +69,7 @@ public class OlderFastTrackDevice extends TimerDeviceBase {
       public String apply(String line) throws SerialPortException {
         Matcher m = TimerDeviceUtils.matchedCommonRaceResults(line);
         if (m != null) {
+          has_ever_spoken = true;
           Message.LaneResult[] results
               = TimerDeviceUtils.extractResults(line, m.start(), m.end(),
                                                 MAX_LANES);
@@ -76,17 +80,7 @@ public class OlderFastTrackDevice extends TimerDeviceBase {
         }
       }
     });
-    portWrapper.registerEarlyDetector(new SerialPortWrapper.Detector() {
-      @Override
-      public String apply(String s) throws SerialPortException {
-        if (s.charAt(0) == '@') {
-          // raceStarted();
-          return s.substring(1);
-        } else {
-          return s;
-        }
-      }
-    });
+    MicroWizard.registerEarlyDetectorForReset(portWrapper);
   }
 
   // No lane masks!
@@ -110,11 +104,14 @@ public class OlderFastTrackDevice extends TimerDeviceBase {
     return 0;
   }
 
+  public String getTimerIdentifier() {
+    return null;
+  }
+
   public void poll() throws SerialPortException, LostConnectionException {
     String line;
     while ((line = portWrapper.nextNoWait()) != null) {
-      portWrapper.logWriter().serialPortLogInternal(
-          "Unexpected timer output: " + line);
+      LogWriter.serial("Unexpected timer output: " + line);
     }
   }
 }

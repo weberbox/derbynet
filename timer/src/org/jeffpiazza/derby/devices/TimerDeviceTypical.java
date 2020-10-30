@@ -1,6 +1,7 @@
 package org.jeffpiazza.derby.devices;
 
 import jssc.SerialPortException;
+import org.jeffpiazza.derby.LogWriter;
 import org.jeffpiazza.derby.Message;
 import org.jeffpiazza.derby.serialport.SerialPortWrapper;
 import org.jeffpiazza.derby.Timestamp;
@@ -23,9 +24,11 @@ public abstract class TimerDeviceTypical
   // Keeps track of last known state of the gate
   protected boolean gateIsClosed;
 
+  protected String timerIdentifier;
+
   protected TimerDeviceTypical(SerialPortWrapper portWrapper) {
     super(portWrapper);
-    this.rsm = new RacingStateMachine(this, portWrapper.logWriter());
+    this.rsm = new RacingStateMachine(this);
   }
 
   public void prepareHeat(int roundid, int heat, int lanemask)
@@ -37,7 +40,7 @@ public abstract class TimerDeviceTypical
     if (this.roundid == roundid && this.heat == heat
         && (state == RacingStateMachine.State.MARK
             || state == RacingStateMachine.State.SET)) {
-      portWrapper.logWriter().traceInternal("Ignoring redundant prepareHeat()");
+      LogWriter.trace("Ignoring redundant prepareHeat()");
       return;
     }
 
@@ -52,6 +55,8 @@ public abstract class TimerDeviceTypical
   public int getSafeNumberOfLanes() throws SerialPortException {
     return getNumberOfLanes();
   }
+
+  public String getTimerIdentifier() { return timerIdentifier; }
 
   public String describeLaneMask(int lanemask) throws SerialPortException {
     StringBuilder sb = new StringBuilder("Heat prepared: ");
@@ -79,7 +84,7 @@ public abstract class TimerDeviceTypical
 
   protected void logOverdueResults() {
     String msg = Timestamp.string() + ": ****** Race timed out *******";
-    portWrapper.logWriter().traceInternal(msg);
+    LogWriter.trace(msg);
     System.err.println(msg);
   }
 
@@ -142,8 +147,7 @@ public abstract class TimerDeviceTypical
       checkConnection();
 
       // Don't know, assume unchanged
-      portWrapper.logWriter().serialPortLogInternal(
-          "** Unable to determine starting gate state");
+      LogWriter.serial("** Unable to determine starting gate state");
       System.err.println(Timestamp.string() + ": Unable to read gate state");
     }
     return getGateIsClosed();
@@ -190,8 +194,6 @@ public abstract class TimerDeviceTypical
     // We'd like to alert the operator to intervene manually, but
     // as currently implemented, a malfunction(false) message would require
     // unplugging/replugging the timer to reset: too invasive.
-    portWrapper.logWriter().
-        serialPortLogInternal(
-            "No result from timer for the running race; giving up.");
+    LogWriter.serial("No result from timer for the running race; giving up.");
   }
 }

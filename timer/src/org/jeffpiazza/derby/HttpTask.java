@@ -17,20 +17,25 @@ public class HttpTask implements Runnable {
   private TimerHealthCallback timerHealthCallback;
   private HeatReadyCallback heatReadyCallback;
   private AbortHeatCallback abortHeatCallback;
+  private RemoteStartCallback remoteStartCallback;
   // Print queued Messages when actually sent.
-  private MessageTracer traceQueued;
+  private boolean traceQueued;
   // Print heartbeat Messages when actually sent.
-  private MessageTracer traceHeartbeat;
+  private boolean traceHeartbeat;
+  private boolean traceResponses;
 
-  public static final long heartbeatPace = 10000;  // ms.
+  public static final long heartbeatPace = 500;  // ms.
 
   // Callbacks all get invoked from the thread running HttpTask.  They're
   // expected to return reasonably quickly to their caller.
-
   // Called when it's time to send a heartbeat to the web server, which we'll
   // do only if the timer is healthy (connected).
   public interface TimerHealthCallback {
-    boolean isTimerHealthy();
+    public static final int UNHEALTHY = 0;
+    public static final int PRESUMED_HEALTHY = 1;
+    public static final int HEALTHY = 2;
+
+    int getTimerHealth();
   }
 
   // Called when a PREPARE_HEAT message is received from the web server
@@ -43,12 +48,10 @@ public class HttpTask implements Runnable {
     void onAbortHeat();
   }
 
-  public interface MessageTracer {
-    void onMessageSend(Message m, String params);
+  public interface RemoteStartCallback {
+    boolean hasRemoteStart();
 
-    void onMessageResponse(Message m, Element response);
-
-    void traceInternal(String s);
+    void remoteStart();
   }
 
   public interface LoginCallback {
@@ -59,18 +62,16 @@ public class HttpTask implements Runnable {
 
   // When a ClientSession and credentials are available, start() launches
   // the HttpTask in a new Thread.
-  public static void start(final String username, final String password,
-                           final ClientSession session,
-                           final MessageTracer traceQueued,
-                           final MessageTracer traceHeartbeat,
+  public static void start(final ClientSession session,
                            final Connector connector,
                            final LoginCallback callback) {
+    LogWriter.setClientSession(session);
     (new Thread() {
       @Override
       public void run() {
         boolean login_ok = false;
         try {
-          Element login_response = session.login(username, password);
+          Element login_response = session.login();
           login_ok = ClientSession.wasSuccessful(login_response);
           if (!login_ok) {
             callback.onLoginFailed("Login failed");
@@ -83,7 +84,7 @@ public class HttpTask implements Runnable {
 
         if (login_ok) {
           callback.onLoginSuccess();
-          HttpTask task = new HttpTask(session, traceQueued, traceHeartbeat);
+          HttpTask task = new HttpTask(session);
           connector.setHttpTask(task);
           task.run();
         }
@@ -91,20 +92,19 @@ public class HttpTask implements Runnable {
     }).start();
   }
 
-  public HttpTask(ClientSession session, MessageTracer traceQueued,
-                  MessageTracer traceHeartbeat) {
+  public HttpTask(ClientSession session) {
     this.session = session;
     this.queue = new ArrayList<Message>();
-    this.traceQueued = traceQueued;
-    this.traceHeartbeat = traceHeartbeat;
     synchronized (queue) {
       queueMessage(new Message.Hello());
     }
   }
 
-  public void sendIdentified(int nlanes) {
+  public void sendIdentified(int nlanes, String timer, String identifier,
+                             boolean confirmed) {
     synchronized (queue) {
-      queueMessage(new Message.Identified(nlanes));
+      queueMessage(new Message.Identified(nlanes, timer, identifier,
+                                          confirmed));
     }
   }
 
@@ -124,6 +124,7 @@ public class HttpTask implements Runnable {
   protected synchronized TimerHealthCallback getTimerHealthCallback() {
     return this.timerHealthCallback;
   }
+
   public synchronized void registerHeatReadyCallback(HeatReadyCallback cb) {
     this.heatReadyCallback = cb;
   }
@@ -140,16 +141,30 @@ public class HttpTask implements Runnable {
     return this.abortHeatCallback;
   }
 
+  protected synchronized void registerRemoteStart(RemoteStartCallback cb) {
+    this.remoteStartCallback = cb;
+  }
+
+  protected synchronized RemoteStartCallback getRemoteStartCallback() {
+    return this.remoteStartCallback;
+  }
+
+  protected boolean hasRemoteStart() {
+    RemoteStartCallback cb = getRemoteStartCallback();
+    return cb != null && cb.hasRemoteStart();
+  }
+
   private static int parseIntOrZero(String attr) {
     if (attr.isEmpty()) {
       return 0;
     }
     try {
       return Integer.valueOf(attr);
-    } catch (NumberFormatException nfe) { // regex should have ensured this won't happen
-      // TODO This should be logged, not dumped to stdout
-      System.out.println(Timestamp.string()
-                         + ": Unexpected number format exception reading heat-ready response");
+    } catch (NumberFormatException nfe) {
+      // regex should have ensured this won't happen
+      LogWriter.stacktrace(nfe);
+      System.err.println(
+          "Unexpected number format exception reading heat-ready response");
       return 0;
     }
   }
@@ -161,7 +176,8 @@ public class HttpTask implements Runnable {
   public void run() {
     while (true) {
       Element response = null;
-      MessageTracer traceMessage = null;
+      boolean trace;
+      boolean log = true;
       Message nextMessage;
       synchronized (queue) {
         if (queue.size() == 0) {
@@ -172,32 +188,44 @@ public class HttpTask implements Runnable {
         }
         if (queue.size() > 0) {
           nextMessage = queue.remove(0);
-          traceMessage = this.traceQueued;
+          trace = this.traceQueued;
         } else {
           TimerHealthCallback timerHealth = getTimerHealthCallback();
-          if (timerHealth != null && timerHealth.isTimerHealthy()) {
+          if (timerHealth != null) {
+            int health = timerHealth.getTimerHealth();
             // Send heartbeats only if we've actually identified the timer and
-            // it's healthy.
-            nextMessage = new Message.Heartbeat();
-            traceMessage = this.traceHeartbeat;
+            // it's not unhealthy.
+            if (health != TimerHealthCallback.UNHEALTHY) {
+              nextMessage = new Message.Heartbeat(
+                  health == TimerHealthCallback.HEALTHY);
+              log = trace = this.traceHeartbeat;
+            } else {
+              continue;
+            }
           } else {
             continue;
           }
         }
 
-        boolean succeeded = false;
-        while (!succeeded) {
+        while (response == null) {
           String params = null;
           try {
             params = nextMessage.asParameters();
-            if (traceMessage != null) {
-              traceMessage.onMessageSend(nextMessage, params);
+            if (hasRemoteStart()) {
+              params += "&remote-start=YES";
+            }
+            if (trace) {
+              StdoutMessageTrace.httpMessage(params);
+            }
+            if (log) {
+              LogWriter.httpMessage(params);
             }
             response = session.sendTimerMessage(params);
-            succeeded = true;
           } catch (Throwable t) {
-            System.out.println(Timestamp.string()
-                + ": Unable to send HTTP message " + params + "; retrying");
+            LogWriter.trace("Unable to send HTTP message " + params);
+            LogWriter.stacktrace(t);
+            System.err.println(
+                "Unable to send HTTP message " + params + "; retrying");
             t.printStackTrace();
           }
         }
@@ -207,8 +235,26 @@ public class HttpTask implements Runnable {
         continue;
       }
 
-      if (traceMessage != null) {
-        traceMessage.onMessageResponse(nextMessage, response);
+      if (traceResponses) {
+        if (trace) {
+          StdoutMessageTrace.httpResponse(nextMessage, response);
+        }
+        if (log) {
+          LogWriter.httpResponse(response);
+        }
+      }
+
+      NodeList remote_logs = response.getElementsByTagName("remote-log");
+      if (remote_logs.getLength() > 0) {
+        LogWriter.setRemoteLogging(Boolean.parseBoolean(
+            ((Element) remote_logs.item(0)).getAttribute("send")));
+      }
+
+      if (response.getElementsByTagName("abort").getLength() > 0) {
+        AbortHeatCallback cb = getAbortHeatCallback();
+        if (cb != null) {
+          cb.onAbortHeat();
+        }
       }
 
       NodeList heatReadyNodes = response.getElementsByTagName("heat-ready");
@@ -223,10 +269,10 @@ public class HttpTask implements Runnable {
         }
       }
 
-      if (response.getElementsByTagName("abort").getLength() > 0) {
-        AbortHeatCallback cb = getAbortHeatCallback();
+      if (response.getElementsByTagName("remote-start").getLength() > 0) {
+        RemoteStartCallback cb = getRemoteStartCallback();
         if (cb != null) {
-          cb.onAbortHeat();
+          cb.remoteStart();
         }
       }
     }

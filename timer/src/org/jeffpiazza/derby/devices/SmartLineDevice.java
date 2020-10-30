@@ -1,11 +1,10 @@
 package org.jeffpiazza.derby.devices;
 
+import java.util.regex.Matcher;
 import jssc.*;
+import org.jeffpiazza.derby.LogWriter;
 import org.jeffpiazza.derby.Message;
 import org.jeffpiazza.derby.serialport.SerialPortWrapper;
-import org.jeffpiazza.derby.Timestamp;
-
-import java.util.regex.Matcher;
 
 public class SmartLineDevice extends TimerDeviceCommon implements TimerDevice {
   private int numberOfLanes;  // Detected at probe time
@@ -82,32 +81,32 @@ public class SmartLineDevice extends TimerDeviceCommon implements TimerDevice {
     while ((s = portWrapper.next(deadline)) != null) {
       // eTekGadget SmartLine Timer v20.06 (B0007)
       if (s.indexOf("eTekGadget SmartLine Timer") >= 0) {
+        has_ever_spoken = true;
+        timerIdentifier = s;
 
         portWrapper.write(RESET);
 
         String nl = portWrapper.writeAndWaitForResponse(READ_LANE_COUNT, 500);
         if ('0' < nl.charAt(0) && nl.charAt(0) <= '9') {
           this.numberOfLanes = nl.charAt(0) - '0';
-          portWrapper.logWriter().serialPortLogInternal(
-              Timestamp.string() + ": "
-              + this.numberOfLanes + " lane(s) reported.");
+          LogWriter.serial(this.numberOfLanes + " lane(s) reported.");
         }
 
         // TODO: Does this just need to be configured to
         // eliminate having to do manually?
-        portWrapper.logWriter().serialPortLogInternal("AUTO_RESET = "
+        LogWriter.serial("AUTO_RESET = "
             + portWrapper.writeAndWaitForResponse(READ_AUTO_RESET, 500)
         );
-        portWrapper.logWriter().serialPortLogInternal("LANE_CHARACTER = "
+        LogWriter.serial("LANE_CHARACTER = "
             + portWrapper.writeAndWaitForResponse(READ_LANE_CHARACTER, 500)
         );
-        portWrapper.logWriter().serialPortLogInternal("DECIMAL_PLACES = "
+        LogWriter.serial("DECIMAL_PLACES = "
             + portWrapper.writeAndWaitForResponse(READ_DECIMAL_PLACES, 500)
         );
-        portWrapper.logWriter().serialPortLogInternal("PLACE_CHARACTER = "
+        LogWriter.serial("PLACE_CHARACTER = "
             + portWrapper.writeAndWaitForResponse(READ_PLACE_CHARACTER, 500)
         );
-        portWrapper.logWriter().serialPortLogInternal("START_SWITCH = "
+        LogWriter.serial("START_SWITCH = "
             + portWrapper.writeAndWaitForResponse(READ_START_SWITCH, 500)
         );
 
@@ -158,6 +157,8 @@ public class SmartLineDevice extends TimerDeviceCommon implements TimerDevice {
 
     for (int lane = 0; lane < getSafeNumberOfLanes(); ++lane) {
       if ((lanemask & (1 << lane)) == 0) {
+        // 100ms. sleep between mask commands
+        try { Thread.sleep(100); } catch (InterruptedException ex) { }
         portWrapper.write(MASK_LANE + (char) ('1' + lane) + "\r");
       }
     }

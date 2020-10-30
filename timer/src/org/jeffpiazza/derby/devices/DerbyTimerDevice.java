@@ -7,6 +7,7 @@ import org.jeffpiazza.derby.serialport.SerialPortWrapper;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jeffpiazza.derby.LogWriter;
 
 // This class supports the "Derby Timer" device, http://derbytimer.com
 public class DerbyTimerDevice extends TimerDeviceTypical {
@@ -23,6 +24,7 @@ public class DerbyTimerDevice extends TimerDeviceTypical {
   }
 
   private int laneCount = 0;
+
   // These get initialized upon the start of each new race.
   private int nresults = 0;
   private ArrayList<Message.LaneResult> results;
@@ -56,7 +58,9 @@ public class DerbyTimerDevice extends TimerDeviceTypical {
         s = portWrapper.next(deadline);
         Matcher m = readyNLanesPattern.matcher(s);
         if (m.find()) {
+          has_ever_spoken = true;
           laneCount = Integer.parseInt(m.group(1));
+          timerIdentifier = s;
         }
 
         setUp();
@@ -77,12 +81,14 @@ public class DerbyTimerDevice extends TimerDeviceTypical {
       @Override
       public String apply(String line) throws SerialPortException {
         if (line.equals("RACE")) {
+          has_ever_spoken = true;
           if (getGateIsClosed()) {
             setGateIsClosed(false);
             rsm.onEvent(RacingStateMachine.Event.GATE_OPENED);
           }
           return "";
         } else if (line.equals("FINISH")) {
+          has_ever_spoken = true;
           if (results != null) {
             raceFinished((Message.LaneResult[]) results.toArray(
                 new Message.LaneResult[results.size()]));
@@ -93,6 +99,7 @@ public class DerbyTimerDevice extends TimerDeviceTypical {
         } else {
           Matcher m = readyNLanesPattern.matcher(line);
           if (m.find()) {
+            has_ever_spoken = true;
             int nlanes = Integer.parseInt(m.group(1));
             // If any lanes have been masked, not sure what READY n LANES
             // will report, so only update a larger laneCount.
@@ -107,6 +114,7 @@ public class DerbyTimerDevice extends TimerDeviceTypical {
           }
           m = singleLanePattern.matcher(line);
           if (m.find()) {
+            has_ever_spoken = true;
             int lane = Integer.parseInt(m.group(1));
             String time = m.group(2);
             if (results != null) {
@@ -154,8 +162,7 @@ public class DerbyTimerDevice extends TimerDeviceTypical {
       } else if (s.trim().equals("D")) {
         return false;
       } else {
-        portWrapper.logWriter().serialPortLogInternal(
-            "Unrecognized response: '" + s + "'");
+        LogWriter.serial("Unrecognized response: '" + s + "'");
       }
     }
 

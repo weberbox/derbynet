@@ -45,7 +45,18 @@ array(
 
 "CREATE TABLE `Classes` ("
 ."  `classid` INTEGER PRIMARY KEY, "
-."  `class` VARCHAR(15) NOT NULL UNIQUE"
+."  `class` VARCHAR(15) NOT NULL UNIQUE COLLATE NOCASE"
+.(expected_schema_version() < 3 ? "" :
+  // For aggregate classes, constituents is a comma-separated list of classids, and
+  // durable is true if the aggregate class was created explicitly by the user, otherwise
+  // false if created while creating an aggregate round.
+  (",  `constituents` VARCHAR(100) DEFAULT ''"
+   .(expected_schema_version() < 5 ? "" :
+     ",  `rankids` VARCHAR(100) DEFAULT ''")
+   .", `durable` INTEGER"
+  // ntrophies is the number of trophies to award for this class, or -1 to use
+  // the standard value from settings.
+   .", `ntrophies` INTEGER DEFAULT -1"))
 .(expected_schema_version() < 2 ? "" : ",  `sortorder` INTEGER")
 .")",
 
@@ -62,7 +73,7 @@ array(
 ."  `finishtime` DOUBLE NULL, "
 ."  `finishplace` INTEGER, "
 ."  `points` INTEGER, "
-."  `completed` TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+."  `completed` TIMESTAMP, "
 ."  `ignoretime` TINYINT(1) DEFAULT 0, "
 ."  `masterheat` INTEGER DEFAULT 0"
 .")",
@@ -91,7 +102,7 @@ make_index("RaceInfo", "itemkey"),
 
 "CREATE TABLE `Ranks` ("
 ."  `rankid` INTEGER PRIMARY KEY, "
-."  `rank` VARCHAR(15) NOT NULL, "
+."  `rank` VARCHAR(15) NOT NULL COLLATE NOCASE, "
 ."  `classid` INTEGER NOT NULL"
 .(expected_schema_version() < 2 ? "" : ",  `sortorder` INTEGER ")
 .")",
@@ -104,8 +115,8 @@ make_index("Ranks", "rank"),
 ."  `racerid` INTEGER PRIMARY KEY, "
 ."  `carnumber` INTEGER NOT NULL, "
 ."  `carname` VARCHAR(20), "
-."  `lastname` VARCHAR(20) NOT NULL, "
-."  `firstname` VARCHAR(15) NOT NULL, "
+."  `lastname` VARCHAR(20) NOT NULL COLLATE NOCASE, "
+."  `firstname` VARCHAR(15) NOT NULL COLLATE NOCASE, "
 ."  `classid` INTEGER NOT NULL, "
 ."  `rankid` INTEGER NOT NULL, "
 ."  `passedinspection` TINYINT(1) DEFAULT 0, "
@@ -149,14 +160,21 @@ make_index("Rounds", "round"),
 
 @include_once(sql_file_path('kiosk-table')),
 
+@include_once(sql_file_path('message-queue-table')),
+
+@include_once(sql_file_path('scene-tables')),
+
+@include_once(sql_file_path('playlist-table')),
+
 @include_once(sql_file_path('award-type-values')),
 
 array(
 "INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('schema', ".expected_schema_version().")",
-"INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('show-racer-photos', '1')",
+"INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('photos-on-now-racing', 'head')",
 "INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('show-cars-on-deck', '1')",
 "INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('show-racer-photos-rr', '1')",
 "INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('show-car-photos-rr', '1')",
+"INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('upload-videos', '1')",
   )
 );
 ?>

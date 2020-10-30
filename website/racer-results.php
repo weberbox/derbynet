@@ -6,32 +6,31 @@ require_once('inc/name-mangler.inc');
 require_once('inc/schema_version.inc');
 require_once('inc/running_round_header.inc');
 require_once('inc/ordinals.inc');
+require_once('inc/rounds.inc');
 
 $use_master_sched = use_master_sched();
 $high_water_rounds = high_water_rounds();
+
+$signatures = schedule_signature();
 ?><!DOCTYPE html>
 <html>
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
 <script type="text/javascript" src="js/jquery.js"></script>
-<?php if (isset($as_kiosk)) {
+<script type="text/javascript" src="js/ajax-setup.js"></script>
+<script type="text/javascript">
+var g_as_kiosk = <?php echo isset($as_kiosk) ? "true" : "false"; ?>;
+</script>
+<?php
+if (isset($as_kiosk)) {
   require_once('inc/kiosk-poller.inc');
   echo "<style type='text/css'>\n";
   echo "body { overflow: hidden; }\n";
   echo "</style>\n";
-}?>
-<script type="text/javascript">
-var g_update_status = {
-      last_update_time: "", // First refresh is for everything
-      high_water_resultid: <?php echo high_water_resultid(); ?>,
-      high_water_tbodyid: <?php echo $high_water_rounds['roundid']; ?>,
-      use_master_sched: <?php echo $use_master_sched ? 1 : 0; ?>,
-      // Even if using master scheduling, display the round results separately.
-      merge_rounds: false,
-};
-</script>
-<?php require_once('inc/ajax-failure.inc'); ?>
-<script type="text/javascript" src="js/update.js"></script>
+}
+?>
+<script type="text/javascript" src="js/common-update.js"></script>
+<script type="text/javascript" src="js/results-by-racer-update.js"></script>
 <?php if (isset($as_kiosk))
     echo '<script type="text/javascript" src="js/results-by-racer-scrolling.js"></script>'."\n";
 ?>
@@ -43,6 +42,10 @@ var g_update_status = {
 <style>
 .scroll-bounding-rect {
       overflow: hidden;
+}
+
+td span.time {
+  font-size: 24px /* 3vh */;
 }
 </style>
 </head>
@@ -59,7 +62,6 @@ $show_racer_photos = read_raceinfo_boolean('show-racer-photos-rr');
 $show_car_photos = read_raceinfo_boolean('show-car-photos-rr');
 $use_points = read_raceinfo_boolean('use-points');
 
-require_once('inc/rounds.inc');
 $rounds = all_rounds();
 
 $sql = 'SELECT RegistrationInfo.racerid,'
@@ -98,11 +100,11 @@ function byes($n) {
   return $result;
 }
 
-function write_rr($racer_label, $racer_cells, $nrows) {
+function write_rr($racer_label, $roundid, $racer_cells, $nrows) {
   global $nlanes;
   global $row;  // read and written
 
-  $rrow = '<tr class="d'.($row & 1).'">'
+  $rrow = '<tr class="d'.($row & 1).'" data-roundid="'.$roundid.'">'
          .'<th rowspan="'.$nrows.'" class="nrows'.$nrows.'">'.$racer_label.'</th>';
   ++$row;
   for ($r = 0; $r < $nrows; ++$r) {
@@ -124,6 +126,7 @@ function write_rr($racer_label, $racer_cells, $nrows) {
 }
 
 $name_style = read_raceinfo('name-style', FULL_NAME);
+$time_format = get_finishtime_formatting_string();
 
 $rs = $stmt->fetch(PDO::FETCH_ASSOC);
 foreach ($rounds as $round) {
@@ -137,11 +140,15 @@ foreach ($rounds as $round) {
       $now_running['classid'] == $classid)
     $is_current = 1;
 
-  echo '<tbody id="tbody_'.$groupid.'">'."\n";
+  // For this page, 'groupid' is always roundid, regardless of master scheduling or not.
+  echo '<tbody id="tbody_'.$groupid.'" data-roundid="'.$groupid.'" data-signature="'.$signatures[$groupid].'">'."\n";
   echo '<tr><th/><th class="group_spacer wide" colspan="'.$nlanes.'"/></tr>'."\n";
   echo '<tr><th class="pre_group_title"/>'
       .'<th class="group_title wide" colspan="'.$nlanes.'">'
-          .htmlspecialchars($round['class'], ENT_QUOTES, 'UTF-8').', Round '.$round['round'].'</th>'
+      .(use_groups()
+        ? htmlspecialchars($round['class'], ENT_QUOTES, 'UTF-8').', '
+        : '')
+      .'Round '.$round['round'].'</th>'
       .'</tr>'."\n";
 
   echo '<tr>';
@@ -156,7 +163,7 @@ foreach ($rounds as $round) {
   while ($rs and $rs['roundid'] == $roundid) {
     if ($racerid <> $rs['racerid']) {
       if ($racer_label) {
-		write_rr($racer_label, $racer_cells, $nrows);
+		write_rr($racer_label, $roundid, $racer_cells, $nrows);
       }
       $racerid = $rs['racerid'];
       $racer_label = '';
@@ -182,12 +189,12 @@ foreach ($rounds as $round) {
     $lane = $rs['lane'];
 
     $ft = $use_points ? (isset($rs['finishplace']) ? ordinal($rs['finishplace']) : '--')
-                      : (isset($rs['finishtime']) ? number_format($rs['finishtime'], 3) : '--');
+                      : (isset($rs['finishtime']) ? sprintf($time_format, $rs['finishtime']) : '--');
 
     $racer_cells[$lane - 1][] = '<td class="resultid_'.$rs['resultid'].'">'
-                 .'<a class="heat_link" href="ondeck.php#heat_'.$roundid.'_'.$rs['heat'].'">'
+    //.'<a class="heat_link" href="ondeck.php#heat_'.$roundid.'_'.$rs['heat'].'">'
                  .'<span class="time">'.$ft.'</span>'
-                 .'</a>'
+    //.'</a>'
                  .'</td>'."\n";
     if (count($racer_cells[$lane - 1]) > $nrows) {
       $nrows = count($racer_cells[$lane - 1]);
@@ -197,7 +204,7 @@ foreach ($rounds as $round) {
   }
 
   if ($racer_label) {
-    write_rr($racer_label, $racer_cells, $nrows);
+    write_rr($racer_label, $roundid, $racer_cells, $nrows);
   }
   echo '</tbody>'."\n";
 }
@@ -213,5 +220,6 @@ $stmt->closeCursor();
   }
 ?>
 </div>
+<?php require_once('inc/ajax-failure.inc'); ?>
 </body>
 </html>

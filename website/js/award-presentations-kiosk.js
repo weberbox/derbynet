@@ -1,6 +1,27 @@
-var g_count = 0;
+// Whether or not to show confetti is a kiosk parameter.
+var g_confetti = false;
+$(function() {
+  KioskPoller.param_callback = function(parameters) {
+    if (!parameters.hasOwnProperty('confetti')) {
+      parameters.confetti = true;
+    }
+    g_confetti = parameters.confetti;
+  };
+
+  // Upon displaying an Awards Presentation page, clear any current award.
+  $.ajax('action.php',
+         {type: 'POST',
+          data: {action: 'award.present',
+                 key: '',
+                 reveal: '0'}
+         });
+});
+
 var AwardPoller = {
   current_award_key: null,
+  // revealed tells whether the previous poll result said to reveal the
+  // recipient -- we trigger fade-in and video on the transition from
+  // not-revealed to revealed.
   revealed: true,
 
   query_for_current_award: function() {
@@ -26,7 +47,6 @@ var AwardPoller = {
     if (!award_xml) {
       return false;
     }
-    console.log("Reveal = " + award_xml.getAttribute('reveal'));
     return {key: award_xml.getAttribute('key'),
             reveal: award_xml.getAttribute('reveal') == 'true',
             awardname: award_xml.getAttribute('awardname'),
@@ -42,12 +62,12 @@ var AwardPoller = {
   process_current_award: function(data) {
     var award = this.parse_award(data);
     if (!award) {
-      $("#firstname").text("--");
-      $("#lastname").text("--");
+      $("#awardname").text("Award Presentation");
+      $(".reveal").hide();
       return;
     }
 
-    if (award.key != this.current_award_key) {
+    if (this.current_award_key != award.key) {
       $(".reveal").hide();
 
       $("#awardname").text(award.awardname);
@@ -83,30 +103,59 @@ var AwardPoller = {
 
       $("#headphoto").empty();
       $("#headphoto").css('width', $(window).width() / 2 - 10);
+      $("#headphoto").css('margin-left', 0);
+
+      $("#carphoto").empty();
+      $("#carphoto").css('width', $(window).width() / 2 - 10);
+      $("#carphoto").css('margin-right', 0);
+
       if (award.headphoto && award.headphoto.length > 0) {
         $("#headphoto").append("<img src=\"" + award.headphoto + "\"/>");
         $("#headphoto img").css('max-height', maxPhotoHeight);
+      } else {
+        // If there's no head photo, center the car photo by adjusting its margin
+        $("#carphoto").css('margin-right', $(window).width() / 4);
       }
-      $("#carphoto").empty();
-      $("#carphoto").css('width', $(window).width() / 2 - 10);
       if (award.carphoto && award.carphoto.length > 0) {
         $("#carphoto").append("<img src=\"" + award.carphoto + "\"/>");
         $("#carphoto img").css('max-height', maxPhotoHeight);
+      } else {
+        // If there's no car photo, center the head photo
+        $("#headphoto").css('margin-left', $(window).width() / 4);
       }
-      this.current_award_key = award.key;
+      // Changing awards: prime revealed=false so next reveal (or current one)
+      // will trigger fade-in and video.
+      this.revealed = false;
     }
 
     if (!award.reveal) {
       $(".reveal").hide();
-      if (g_count == 0) {
-        console.log("Hiding!");
-        console.log(award);
-        ++g_count;
-      }
+
+      var video = $("video.confetti");
+      video.hide();
+      video.get(0).pause();
+      video.get(0).currentTime = 0;
+      video.show();
     } else if (!this.revealed) {
       $(".reveal").fadeIn(1000);
+      if (g_confetti && this.current_award_key != null) {
+        setTimeout(function() {
+          $("video.confetti").get(0).play(); }, 500);
+        // Confetti is a 10-second video, and <video> element says loop="true";
+        // fade out after 20 seconds to play video twice.
+        setTimeout(function() {
+          $("video.confetti").fadeOut(
+            500, function() {
+              var video = $("video.confetti");
+              video.get(0).pause();
+              video.get(0).currentTime = 0;
+              video.show();
+            }); },
+                   20500);
+      }
     }
     this.revealed = award.reveal;
+    this.current_award_key = award.key;
   }
 }
 

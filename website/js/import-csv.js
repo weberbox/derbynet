@@ -10,6 +10,10 @@ function usingLabelTargets() {
 function onFileContentLoaded(file) {
 }
 
+// Fires when the setting on whether there's a header row changes.
+function onHeaderRowToggle() {
+}
+
 // onDrop fires when a label is dragged to a th.label_target, but not when it's
 // dragged back to the palette of labels.
 function onDrop(draggable, droppable) {
@@ -92,7 +96,8 @@ function populateContentTable(sheetname) {
 
   var sheet = g_workbook.Sheets[sheetname];
 
-  var arrays = XLSX.utils.sheet_to_json(sheet, {header: 1});
+  var default_value = "default-value-hopefully-unlikely-to-occur-in-a-real-spreadsheet";
+  var arrays = XLSX.utils.sheet_to_json(sheet, {header: 1, defval: default_value});
 
   var first = true;
   for (var row in arrays) {
@@ -108,22 +113,20 @@ function populateContentTable(sheetname) {
     var table_row = $('<tr/>').attr("data-row", 1 + parseInt(row)).appendTo(csv_content);
     if (first) {
       table_row.addClass("header_row");
-    }
-
-    // First column shows the outcome of each row's upload attempt.
-    // First row also includes flipswitch for header row.
-    if (first) {
+      // First column shows the outcome of each row's upload attempt.
+      // First row also includes flipswitch for header row.
       $('<th/>').append(
         '<label for="header-row-present">Header row?</label>',
         '<input type="checkbox" name="header-row-present" id="header-row-present"' +
-          ' data-role="flipswitch" checked="checked"/>')
-        .appendTo(table_row)
-        .trigger("create");
+          ' class="flipswitch" checked="checked"/>')
+        .appendTo(table_row);
+      flipswitch(table_row.find('input'));
       table_row.find('input[type="checkbox"]').on("change", handleHeaderRowPresentChange);
     } else {
       table_row.append('<th class="outcome"/>');
     }
     for (var item in arrays[row]) {
+      if (arrays[row][item] == default_value) arrays[row][item] = "";
       $('<td class="dim"/>').addClass('column' + item).text(arrays[row][item]).appendTo(table_row);
     }
     first = false;
@@ -232,11 +235,12 @@ function header_row_present() {
 }
 
 function handleHeaderRowPresentChange(event) {
-    if (header_row_present()) {
-        $('[data-row="1"]').addClass("header_row");
-    } else {
-        $('[data-row="1"]').removeClass("header_row");
-    }
+  if (header_row_present()) {
+    $('[data-row="1"]').addClass("header_row");
+  } else {
+    $('[data-row="1"]').removeClass("header_row");
+  }
+  onHeaderRowToggle();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -391,6 +395,11 @@ function uploadTableRowsFrom(row, action, parameter_names, failures) {
               var ok = xmldoc.documentElement.getElementsByTagName("success");
               if (ok && ok.length > 0) {
                 $('[data-row="' + row + '"] th').append('<span class="ok_outcome">OK</span>');
+                var warning = xmldoc.documentElement.getElementsByTagName("warning");
+                if (warning && warning.length > 0) {
+                  $('<span class="warning"></span>').appendTo('[data-row="' + row + '"] th')
+                    .text(warning[0].childNodes[0].nodeValue);
+                }
               } else {
                 ++failures;
                 $('[data-row="' + row + '"] th').append('<span class="failed_outcome">FAILED </span>');

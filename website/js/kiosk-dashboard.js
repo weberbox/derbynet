@@ -1,3 +1,6 @@
+var g_unclaimed_scene_kiosk_names;
+
+
 //////////////////////////////////////////////////////////////////////////
 // Polling for kiosk dashboard
 //////////////////////////////////////////////////////////////////////////
@@ -7,9 +10,7 @@ function poll_kiosk_all() {
           data: {query: 'poll.kiosk.all'},
           success: function(data) {
             setTimeout(poll_kiosk_all, 2000);
-            generate_kiosk_control_group(parse_kiosk_pages(data),
-                                         parse_kiosks(data));
-            $("#kiosk_control_group").trigger("create");
+            process_polled_data(data);
           },
           error: function() {
             setTimeout(poll_kiosk_all, 2000);
@@ -67,11 +68,29 @@ var g_kiosk_page_handlers = {
       configure_title_and_class_ids(kiosk, kiosk_select);
     }
   },
+  'kiosks/award-presentations.kiosk': {
+    configure: function(kiosk, kiosk_select) {
+      var k_id = 'k-' + kiosk.address.replace(/[:+]/g, '_');
+      if (!kiosk.parameters.hasOwnProperty('confetti')) {
+        kiosk.parameters.confetti = true;
+      }
+      $('<input type="checkbox" id="' + k_id + '" />')
+        .prop('checked',  kiosk.parameters.confetti)
+        .on("change", /*selector*/null, /*data*/kiosk,
+            /*handler*/function (event) {
+              var checked = $(event.target).is(':checked');
+              var kiosk = event.data;  // {name:, address:, assigned_page:, parameters: }
+              post_new_params(kiosk, {confetti: checked});
+            })
+        .appendTo(kiosk_select);
+      $('<label for="' + k_id + '">Confetti</label>').appendTo(kiosk_select);
+    }
+  },
 };
 
 // Configuration function for parameters of {classids: [...]}
 function configure_class_ids(kiosk, kiosk_select) {
-  $('<input type="button" data-enhanced="true" value="Configure"/>')
+  $('<input type="button" value="Configure"/>')
     .on("click", /* selector */null, /* data: */kiosk,
         /* handler */ show_config_classes_modal)
     .appendTo(kiosk_select);
@@ -93,7 +112,7 @@ function add_classids_description(parameters, kiosk_select) {
 
 // Configuration function for parameters of {title:, classids: [...]}
 function configure_title_and_class_ids(kiosk, kiosk_select) {
-  $('<input type="button" data-enhanced="true" value="Configure"/>')
+  $('<input type="button" value="Configure"/>')
     .on("click", /* selector */null, /* data: */kiosk,
         /* handler */ show_config_title_and_classes_modal)
     .appendTo(kiosk_select);
@@ -104,6 +123,7 @@ function configure_title_and_class_ids(kiosk, kiosk_select) {
 
 //////////////////////////////////////////////////////////////////////////
 // Construct dynamic elements for kiosk dashboard
+
 //////////////////////////////////////////////////////////////////////////
 // The polling rate for the page is relatively fast, and each time
 // causes a rewrite of everything for all the kiosks.  If the user has
@@ -123,9 +143,21 @@ function hash_string(hash, str) {
   return hash;
 }
 
-// pages: array of {brief:, path:}
-// kiosks: array of {name:, address:, last_contact:, assigned_page:, parameters:}
-function generate_kiosk_control_group(pages, kiosks) {
+function process_polled_data(data) {
+  var pages = parse_kiosk_pages(data);
+  var kiosks = parse_kiosks(data);
+
+  var current_scene = data.getElementsByTagName("current-scene");
+  if (current_scene.length > 0) {
+    current_scene = current_scene[0].getAttribute("id");
+    if (current_scene != g_current_scene) {
+      g_current_scene = current_scene;
+      $("#scenes-select")
+        .val(g_current_scene == '' ? -1 : g_current_scene)
+        .trigger('change', /*synthetic*/true);
+    }
+  }
+
   var hash = 0;
   for (var i = 0; i < kiosks.length; ++i) {
     var kiosk = kiosks[i];
@@ -136,22 +168,43 @@ function generate_kiosk_control_group(pages, kiosks) {
     hash = hash_string(hash, JSON.stringify(kiosk.parameters));
   }
   if (hash != g_kiosk_hash) {
-    for (var kiosk_page in g_kiosk_page_handlers) {
-      var kiosk_page_handler = g_kiosk_page_handlers[kiosk_page];
-      if ('init_for_rebuild' in kiosk_page_handler) {
-        kiosk_page_handler.init_for_rebuild();
-      }
-    }
-    $("#kiosk_control_group").empty();
-    if (kiosks.length == 0) {
-      $("#kiosk_control_group").append("<h3>No kiosks are presently registered.</h3>");
-    } else {
-      for (var i = 0; i < kiosks.length; ++i) {
-        generate_kiosk_control(i, kiosks[i], pages);
-      }
-    }
     g_kiosk_hash = hash;
+    generate_kiosk_control_group(pages, kiosks);
+    $("#kiosk_control_group").trigger("create");
+    update_kiosk_names(kiosks);
   }
+}
+
+// pages: array of {brief:, path:}
+// kiosks: array of {name:, address:, last_contact:, assigned_page:, parameters:}
+function generate_kiosk_control_group(pages, kiosks) {
+  for (var kiosk_page in g_kiosk_page_handlers) {
+    var kiosk_page_handler = g_kiosk_page_handlers[kiosk_page];
+    if ('init_for_rebuild' in kiosk_page_handler) {
+      kiosk_page_handler.init_for_rebuild();
+    }
+  }
+  $("#kiosk_control_group").empty();
+  if (kiosks.length == 0) {
+    $("#kiosk_control_group").append("<h3>No kiosks are presently registered.</h3>");
+  } else {
+    for (var i = 0; i < kiosks.length; ++i) {
+      generate_kiosk_control(i, kiosks[i], pages);
+    }
+  }
+}
+
+function update_kiosk_names(kiosks) {
+  var name_count = 0;
+  for (var i = 0; i < kiosks.length; ++i) {
+    if (kiosks[i].name != '') {
+      ++name_count;
+    }
+  }
+  $("#scenes-status-message")
+    .text(name_count + " named kiosk" + (name_count == 1 ? "" : "s")
+          + (name_count < kiosks.length ? " out of " + kiosks.length : ""))
+    .toggleClass('red-text', name_count < kiosks.length);
 }
 
 // Returns an array of entries, {brief:, path:}, describing each available kiosk page.
@@ -198,7 +251,7 @@ function generate_kiosk_control(index, kiosk, pages) {
   kiosk_ident.find(".kiosk_control_name").text(kiosk.name);
   kiosk_ident.find(".kiosk_control_address").text(kiosk.address);
   kiosk_ident.find(".kiosk_control_address").toggleClass("de-emphasize", kiosk.name.length > 0);
-  kiosk_ident.append('<input type="button" data-enhanced="true"'
+  kiosk_ident.append('<input type="button"'
                      + ' onclick="show_kiosk_naming_modal(\''
                      + kiosk.address.replace(/"/g, '&quot;').replace(/'/, "\\'")
                      + '\', \'' + kiosk.name.replace(/"/g, '&quot;').replace(/'/, "\\'")
@@ -222,6 +275,7 @@ function generate_kiosk_control(index, kiosk, pages) {
   }
 
   sel.appendTo(kiosk_select);
+  mobile_select(sel);
 
   var kiosk_config_handler = g_kiosk_page_handlers[kiosk.assigned_page.replace("\\", "/")];
   if (kiosk_config_handler) {
@@ -243,6 +297,40 @@ function generate_kiosk_control(index, kiosk, pages) {
 // Controls for assigning pages to kiosks
 //////////////////////////////////////////////////////////////////////////
 
+function setup_scenes_select_control() {
+  $("#scenes-select").empty();
+  $("#scenes-select").append($("<option/>")
+                             .attr('value', -1)
+                             .html("&nbsp;"));
+  for (var i = 0; i < g_all_scenes.length; ++i) {
+    var scene = g_all_scenes[i];
+    $("#scenes-select").append($("<option/>")
+                               .attr('value', scene.sceneid)
+                               .text(scene.name));
+  }
+
+  $("#scenes-select")
+    .on('change', on_scene_change)
+    .val(g_current_scene == '' ? -1 : g_current_scene)
+    .trigger('change', /*synthetic*/true);
+}
+$(function() { setup_scenes_select_control(); });
+
+// synthetic=false if user triggered scene change
+function on_scene_change(event, synthetic) {
+  if (!synthetic) {
+    var val = $("#scenes-select").val();
+    $.ajax(g_action_url,
+           {type: 'POST',
+            data: {action: 'scene.apply',
+                   sceneid: val},
+            success: function(data) {
+              process_polled_data(data);
+            },
+           });
+  }
+}
+
 // sel is the <select data-kiosk-address> input element
 function handle_assign_kiosk_page_change(sel) {
   $.ajax(g_action_url,
@@ -251,16 +339,28 @@ function handle_assign_kiosk_page_change(sel) {
                  address: sel.getAttribute('data-kiosk-address'),
                  page: sel.value},
           success: function(data) {
-            generate_kiosk_control_group(parse_kiosk_pages(data),
-                                         parse_kiosks(data));
-            $("#kiosk_control_group").trigger("create");
+            process_polled_data(data);
           },
          });
 }
 
+function on_click_preferred_name(event) {
+  console.log(event.target);
+  console.log($(event.target).text());
+  $("#kiosk_name_field").val($(event.target).text()).focus();
+  return false;
+}
+
 function show_kiosk_naming_modal(address, name) {
   $("#kiosk_name_field").val(name);
-  show_modal("#kiosk_modal", function(event) {
+  $("#preferred_kiosk_names").empty();
+  for (var i = 0; i < g_all_scene_kiosk_names.length; ++i) {
+    $("#preferred_kiosk_names")
+      .append($("<div class='kiosk-name-prefill-button'/>").text(g_all_scene_kiosk_names[i])
+              .on('click', on_click_preferred_name));
+  }
+  $("#preferred_kiosk_names").trigger('create');
+  show_modal("#kiosk_modal", $("#kiosk_name_field"), function(event) {
     handle_name_kiosk(address, $("#kiosk_name_field").val());
     return false;
   });
@@ -274,9 +374,7 @@ function handle_name_kiosk(address, name) {
                  address: address,
                  name: name},
           success: function(data) {
-            generate_kiosk_control_group(parse_kiosk_pages(data),
-                                         parse_kiosks(data));
-            $("#kiosk_control_group").trigger("create");
+            process_polled_data(data);
           },
          });
 }
@@ -296,7 +394,7 @@ function process_standings_reveal_result(data) {
 
 $(function () {
   // TODO Disable buttons if there's no current roundid selection.
-  $("select").on("change", function(event) {
+  $("select#standings-catalog").on("change", function(event) {
     // The initial prompt, if present, is shown as a disabled option which
     // we can now remove.
     $(this).find("option:disabled").remove();
@@ -305,8 +403,7 @@ $(function () {
            {type: 'POST',
             data: {
               action: 'standings.reveal',
-              roundid: selection.attr('data-roundid'),
-              rankid: selection.attr('data-rankid'),
+              'catalog-entry': selection.attr('data-catalog-entry')
             },
             success: function(data) {
               process_standings_reveal_result(data);
@@ -321,8 +418,8 @@ function handle_reveal1() {
             action: 'standings.reveal',
             expose: '+1'
             },
-            success: function(data) {
-              process_standings_reveal_result(data);
+          success: function(data) {
+            process_standings_reveal_result(data);
           }});
 }
 
@@ -333,8 +430,8 @@ function handle_reveal_all() {
             action: 'standings.reveal',
             expose: 'all'
             },
-            success: function(data) {
-              process_standings_reveal_result(data);
+          success: function(data) {
+            process_standings_reveal_result(data);
           }});
 }
 
@@ -399,16 +496,13 @@ function compute_classids() {
 }
 
 function post_new_params(kiosk, new_params) {
-  console.log("post_new_params: new_params = " + JSON.stringify(new_params));  // TODO
   $.ajax(g_action_url,
          {type: 'POST',
           data: {action: 'kiosk.assign',
                  address: kiosk.address,
                  params: JSON.stringify(new_params)},
           success: function(data) {
-            generate_kiosk_control_group(parse_kiosk_pages(data),
-                                         parse_kiosks(data));
-            $("#kiosk_control_group").trigger("create");
+            process_polled_data(data);
           },
          });
 }

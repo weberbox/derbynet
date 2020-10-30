@@ -2,10 +2,6 @@ package org.jeffpiazza.derby.devices;
 
 import jssc.*;
 import org.jeffpiazza.derby.Message;
-
-import java.io.*;
-import java.util.ArrayList;
-import java.util.regex.*;
 import org.jeffpiazza.derby.serialport.SerialPortWrapper;
 
 public interface TimerDevice {
@@ -56,6 +52,7 @@ public interface TimerDevice {
 
   // Returns 0 if can't tell/don't know
   int getNumberOfLanes() throws SerialPortException;
+  String getTimerIdentifier();
 
   void registerRaceStartedCallback(RaceStartedCallback cb);
   void registerRaceFinishedCallback(RaceFinishedCallback cb);
@@ -67,6 +64,10 @@ public interface TimerDevice {
       throws SerialPortException;
 
   void abortHeat() throws SerialPortException;
+
+  // Returns true if there's ever been any recognized data sent from the device.
+  // There's reason to doubt the identity of a timer if it's never spoken.
+  boolean hasEverSpoken();
 
   // Perform any recurring polling, mainly checking the starting
   // gate status.  Invoke callbacks as necessary.  Throws

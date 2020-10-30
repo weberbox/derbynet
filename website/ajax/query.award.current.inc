@@ -7,9 +7,10 @@
 require_once('inc/photo-config.inc');
 require_once('inc/standings.inc');
 require_once('inc/ordinals.inc');
+require_once('inc/awards.inc');
 
 $key = read_raceinfo('current_award_key', '');
-$use_subgroups = read_raceinfo_boolean('use-subgroups');
+$use_subgroups = use_subgroups();
 $reveal = read_raceinfo_boolean('reveal_current_award');
 
 // award-<awardid>
@@ -22,9 +23,10 @@ if (count($keys) >= 2) {
   if ($keys[0] == 'award') {
     $awardid = $keys[1];
     $stmt = $db->prepare('SELECT Awards.racerid, awardname, firstname, lastname,'
-                         .' carnumber, carname, rank, imagefile, carphoto'
+                         .' carnumber, carname, class, rank, imagefile, carphoto'
                          .' FROM '.inner_join('Awards', 'RegistrationInfo',
                                               'Awards.racerid = RegistrationInfo.racerid',
+                                              'Classes', 'Classes.classid = RegistrationInfo.classid',
                                               'Ranks', 'Ranks.rankid = RegistrationInfo.rankid')
                          .' WHERE awardid = :awardid');
     $stmt->execute(array(':awardid' => $awardid));
@@ -41,32 +43,48 @@ if (count($keys) >= 2) {
       $place_index = 0;
     }
 
+    $awards = array();
+    add_speed_awards($awards);
+
     if (count($keys) == 4) {
-      $classid = $keys[2];
       $rankid = $keys[3];
-      $by_rank = top_finishers($classid, $rankid, final_standings());
-      $racerid = $by_rank[$place - 1][$place_index];
       $rankname = read_single_value('SELECT rank FROM Ranks WHERE rankid = :rankid',
                                     array(':rankid' => $rankid));
       $awardname = nth_fastest($place, $rankname);
     } else if (count($keys) == 3) {
       $classid = $keys[2];
-      $by_class = top_finishers($classid, null, final_standings());
-      $racerid = intval($by_class[$place - 1][$place_index]);
       $classname = read_single_value('SELECT class FROM Classes WHERE classid = :classid',
                                      array(':classid' => $classid));
       $awardname = nth_fastest($place, $classname);
     } else {
-      $finishers = top_finishers(null, null, final_standings());
-      $racerid = $finishers[$place - 1][$place_index];
       $awardname = nth_fastest_in_pack($place);
+    }
+
+    foreach ($awards as $award) {
+      if ($place == $award['place']) {
+        if (isset($rankid)) {
+          $match = $award['rankid'] == $rankid;
+        } else if (isset($classid)) {
+          $match = $award['classid'] == $classid;
+        } else {
+          $match = true;
+        }
+        if ($match) {
+          if ($place_index == 0) {
+            $racerid = $award['racerid'];
+            break;
+          }
+          --$place_index;
+        }
+      }
     }
 
     if ($racerid > 0) {
       $stmt = $db->prepare('SELECT racerid, :awardname AS awardname, firstname, lastname,'
-                           .' carnumber, carname, rank, imagefile, carphoto'
-                           .' FROM '.inner_join('RegistrationInfo', 'Ranks',
-                                                'Ranks.rankid = RegistrationInfo.rankid')
+                           .' carnumber, carname, class, rank, imagefile, carphoto'
+                           .' FROM '.inner_join('RegistrationInfo',
+                                                'Classes', 'Classes.classid = RegistrationInfo.classid',
+                                                'Ranks', 'Ranks.rankid = RegistrationInfo.rankid')
                            .' WHERE racerid = :racerid');
       $stmt->execute(array(':racerid' => $racerid,
                            ':awardname' => $awardname));
@@ -74,8 +92,6 @@ if (count($keys) >= 2) {
   } else {
     echo "<failure code=\"unrecognized-award-code\">Unrecognized award code</failure>\n";
   }
-} else {
-  echo "<failure code=\"no-current-award\"/>\n";
 }
 
 if (isset($stmt)) {
@@ -87,6 +103,7 @@ if (isset($stmt)) {
       .' carname="'.htmlspecialchars($row['carname'], ENT_QUOTES, 'UTF-8').'"'
       .' firstname="'.htmlspecialchars($row['firstname'], ENT_QUOTES, 'UTF-8').'"'
       .' lastname="'.htmlspecialchars($row['lastname'], ENT_QUOTES, 'UTF-8').'"'
+      .' classname="'.htmlspecialchars($row['class'], ENT_QUOTES, 'UTF-8').'"'
       .($use_subgroups ?
        ' subgroup="'.htmlspecialchars(@$row['rank'], ENT_QUOTES, 'UTF-8').'"' : '')
     .($row['imagefile'] ? ' headphoto="'.headshots()->url_for_racer($row, RENDER_CROPPED).'"' : '')

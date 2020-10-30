@@ -5,14 +5,15 @@ require_once('inc/banner.inc');
 require_once('inc/authorize.inc');
 require_once('inc/schema_version.inc');
 require_once('inc/photo-config.inc');
+require_once('inc/classes.inc');
+require_once('inc/checkin-table.inc');
+
 require_permission(CHECK_IN_RACERS_PERMISSION);
 
-// This is the racer check-in page.  It appears as a table of all the
-// registered racers, with a checkbox (actually, a "flipswitch",
-// thanks to transformations peformed by jquery mobile) for each
-// racer.  Clicking on the check-in button invokes some javascript
-// that sends an ajax POST request to check-in (or un-check-in) that
-// racer.  See checkin.js.
+// This is the racer check-in page.  It appears as a table of all the registered
+// racers, with a flipswitch for each racer.  Clicking on the check-in button
+// invokes some javascript that sends an ajax POST request to check-in (or
+// un-check-in) that racer.  See checkin.js.
 
 // In addition to the actual check-in, it's possible to change a
 // racer's car number from this form, or mark the racer for our
@@ -24,9 +25,8 @@ require_permission(CHECK_IN_RACERS_PERMISSION);
 
 // TODO- subgroups explanation
 
-// $use_subgroups, from GPRM settings, tells whether we're using
-// "subgroups" within each racing group.
-$use_subgroups = read_raceinfo_boolean('use-subgroups');
+$use_groups = use_groups();
+$use_subgroups = use_subgroups();
 
 // Our pack provides an "exclusively by scout" award, based on a
 // signed statement from the parent.  Collecting the statement is part
@@ -34,8 +34,8 @@ $use_subgroups = read_raceinfo_boolean('use-subgroups');
 // check-in form.  For groups that don't do this, $xbs will be false
 // (and $xbs_award_name will be blank), and the checkboxes won't be
 // shown.
-$xbs = read_raceinfo_boolean('xbs-award');
-$xbs_award_name = read_raceinfo('xbs-award');
+$xbs = read_raceinfo_boolean('use-xbs');
+$xbs_award_name = read_raceinfo('xbs-award', 'Exclusively By Scout');
 
 $order = '';
 if (isset($_GET['order']))
@@ -49,29 +49,29 @@ if (!$order)
 // column for ordering currently in use is NOT a link (because it wouldn't do
 // anything).
 function column_header($text, $o) {
-    global $order;
-
-    if ($o == $order)
-        return '<b>'.$text.'</b>';
-    return '<a href="?order='.$o.'">'.$text.'</a>';
+  global $order;
+  return "<a data-order='".$o."' "
+      .($o == $order ? "" : " href='#'").">".$text."</a>";
 }
 ?><!DOCTYPE html>
 <html>
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
-<meta http-equiv="refresh" content="300"/>
 <title>Check-In</title>
 <link rel="stylesheet" type="text/css" href="css/dropzone.min.css"/>
-<link rel="stylesheet" type="text/css" href="css/jquery.mobile-1.4.2.css"/>
+<link rel="stylesheet" type="text/css" href="css/mobile.css"/>
 <?php require('inc/stylesheet.inc'); ?>
 <link rel="stylesheet" type="text/css" href="css/main-table.css"/>
 <link rel="stylesheet" type="text/css" href="css/checkin.css"/>
 <script type="text/javascript" src="js/jquery.js"></script>
-<script type="text/javascript" src="js/mobile-init.js"></script>
+<script type="text/javascript" src="js/ajax-setup.js"></script>
 <script type="text/javascript">
-g_order = '<?php echo $order; ?>';
+var g_order = '<?php echo $order; ?>';
+var g_checkin_on_barcode = <?php
+  echo isset($_SESSION['barcode-checkin']) && $_SESSION['barcode-checkin'] ? "true" : "false";
+?>;
 </script>
-<script type="text/javascript" src="js/jquery.mobile-1.4.2.min.js"></script>
+<script type="text/javascript" src="js/mobile.js"></script>
 <script type="text/javascript" src="js/dashboard-ajax.js"></script>
 <script type="text/javascript" src="js/modal.js"></script>
 <script type="text/javascript" src="js/webcam.js"></script>
@@ -81,22 +81,28 @@ g_order = '<?php echo $order; ?>';
 <body>
 <?php
 make_banner('Racer Check-In');
-
-require_once('inc/checkin-table.inc');
 ?>
 
+<div class="block_buttons">
+  <img src="img/barcode.png" style="position: absolute; left: 16px; top: 80px;"
+      onclick="handle_barcode_button_click()"/>
+
+  <input class="bulk_button"
+        type="button" value="Bulk"
+        onclick='show_bulk_form();'/>
 <?php if (have_permission(REGISTER_NEW_RACER_PERMISSION)) { ?>
-    <div class="block_buttons">
-      <input type="button" value="New Racer" data-enhanced="true"
+      <input type="button" value="New Racer"
         onclick='show_new_racer_form();'/>
-	</div>
 <?php } ?>
+</div>
 
 <table id="main_checkin_table" class="main_table">
 <thead>
   <tr>
     <th/>
-    <th><?php echo column_header(group_label(), 'class'); ?></th>
+    <?php if ($use_groups) {
+        echo '<th>'.column_header(group_label(), 'class').'</th>';
+    } ?>
     <?php if ($use_subgroups) {
         echo '<th>'.subgroup_label().'</th>';
     } ?>
@@ -115,39 +121,44 @@ require_once('inc/checkin-table.inc');
 <tbody>
 <?php
 
-    $sql = 'SELECT racerid, carnumber, lastname, firstname, carname, imagefile,'
+  list($classes, $classseq, $ranks, $rankseq) = classes_and_ranks();
+
+  $sql = 'SELECT racerid, carnumber, lastname, firstname, carname, imagefile,'
       .(schema_version() < 2 ? "" : " carphoto,")
       .(schema_version() < 2 ? "class" : "Classes.sortorder").' AS class_sort,'
+      .(schema_version() < 2 ? "rank" : "Ranks.sortorder").' AS rank_sort,'
       .' RegistrationInfo.classid, class, RegistrationInfo.rankid, rank, passedinspection, exclude,'
       .' EXISTS(SELECT 1 FROM RaceChart WHERE RaceChart.racerid = RegistrationInfo.racerid) AS scheduled,'
       .' EXISTS(SELECT 1 FROM RaceChart WHERE RaceChart.classid = RegistrationInfo.classid) AS denscheduled,'
       .' EXISTS(SELECT 1 FROM Awards WHERE Awards.awardname = \''.addslashes($xbs_award_name).'\' AND'
       .'                                   Awards.racerid = RegistrationInfo.racerid) AS xbs'
-    .' FROM '.inner_join('RegistrationInfo', 'Classes',
-                         'RegistrationInfo.classid = Classes.classid',
-                         'Ranks',
-                         'RegistrationInfo.rankid = Ranks.rankid')
-    .' ORDER BY '
+      .' FROM '.inner_join('RegistrationInfo', 'Classes',
+                           'RegistrationInfo.classid = Classes.classid',
+                           'Ranks',
+                           'RegistrationInfo.rankid = Ranks.rankid')
+      .' ORDER BY '
           .($order == 'car' ? 'carnumber, lastname, firstname' :
-            ($order == 'class'  ? 'class_sort, lastname, firstname' :
+            ($order == 'class'  ? 'class_sort, rank_sort, lastname, firstname' :
              'lastname, firstname'));
 
 $stmt = $db->query($sql);
 
 $n = 1;
 foreach ($stmt as $rs) {
-  checkin_table_row($rs, $xbs, $use_subgroups, $n);
+  // TODO
+  $rs['rankseq'] = $ranks[$rs['rankid']]['seq'];
+  checkin_table_row($rs, $use_groups, $use_subgroups, $xbs, $n);
   ++$n;
 }
 ?>
 </tbody>
 </table>
+<div class="block_buttons">
 <?php if (have_permission(REGISTER_NEW_RACER_PERMISSION)) { ?>
-    <div class="block_buttons">
-      <input type="button" value="New Racer" data-enhanced="true"
+      <input type="button" value="New Racer"
         onclick='show_new_racer_form();'/>
-	</div>
 <?php } ?>
+</div>
 
 
 <div id='edit_racer_modal' class="modal_dialog hidden block_buttons">
@@ -169,13 +180,21 @@ foreach ($stmt as $rs) {
   <br/>
 
 <?php
+// $rank_options is a string of <option> elements, one per rank.
+//    $rank_options is used to pick a rank for a new or modified racer.
+//
+// $ranks_and_classes is a string of <option> elements, one for each rank and each class.
+//    $ranks_and_classes is used for picking groups of racers to which a bulk operation
+//    might apply.
 
     $rank_options = "";
+    $ranks_and_classes = "";
+    $last_classid = 0;
     $sql = 'SELECT rankid, rank, Ranks.classid, class'
            .' FROM Ranks INNER JOIN Classes'
            .' ON Ranks.classid = Classes.classid'
            .' ORDER BY '
-           .(schema_version() >= 2 ? 'Classes.sortorder, ' : '')
+           .(schema_version() >= 2 ? 'Classes.sortorder, Ranks.sortorder, ' : '')
            .'class, rank';
     $stmt = $db->query($sql);
     foreach ($stmt as $rs) {
@@ -186,6 +205,17 @@ foreach ($stmt as $rs) {
            .htmlspecialchars($rs['class'], ENT_QUOTES, 'UTF-8')
           .' / '.htmlspecialchars($rs['rank'], ENT_QUOTES, 'UTF-8')
 	       .'</option>';
+      if ($rs['classid'] != $last_classid) {
+        $ranks_and_classes .= "\n".'<option value="c'.$rs['classid'].'">'
+                .htmlspecialchars($rs['class'], ENT_QUOTES, 'UTF-8')
+                .'</option>';
+      }
+      if ($use_subgroups) {
+        $ranks_and_classes .= "\n".'<option value="r'.$rs['rankid'].'">'
+                .htmlspecialchars($rs['rank'], ENT_QUOTES, 'UTF-8')
+                .'</option>';
+      }
+      $last_classid = $rs['classid'];
     }
 
     if (!$rank_options) {
@@ -202,15 +232,20 @@ foreach ($stmt as $rs) {
     </select>
   <br/>
   <label for="eligible">Trophy eligibility:</label>
-    <input type="checkbox" data-role="flipswitch" name="eligible" id="eligible"
+    <input type="checkbox" class="flipswitch" name="eligible" id="eligible"
             data-wrapper-class="trophy-eligible-flipswitch"
             data-off-text="Excluded"
             data-on-text="Eligible"/>
   <br/>
-  <input type="submit" data-enhanced="true"/>
-  <input type="button" value="Cancel" data-enhanced="true"
+  <input type="submit"/>
+  <input type="button" value="Cancel"
     onclick='close_modal("#edit_racer_modal");'/>
 
+  <div id="delete_racer_extension">
+    <input type="button" value="Delete Racer"
+           class="delete_button"
+           onclick="handle_delete_racer();"/>
+  </div>
 </form>
 </div>
 
@@ -233,31 +268,98 @@ foreach ($stmt as $rs) {
     ?>
 
     <div class="block_buttons">
-        <input type="submit" value="Capture &amp; Check In" data-enhanced="true" id="capture_and_check_in"
+        <input type="submit" value="Capture &amp; Check In" id="capture_and_check_in"
            onclick='g_check_in = true;'/>
         <br/>
-        <input type="submit" value="Capture Only" data-enhanced="true"
+        <input type="submit" value="Capture Only"
           onclick='g_check_in = false;'/>
-        <input type="button" value="Cancel" data-enhanced="true"
+        <input type="button" value="Switch Camera"
+          onclick='handle_switch_camera();'/>
+        <input type="button" value="Cancel"
           onclick='close_photo_modal();'/>
 
         <label id="autocrop-label" for="autocrop">Auto-crop after upload:</label>
         <div class="centered_flipswitch">
-          <input type="checkbox" data-role="flipswitch" name="autocrop" id="autocrop" checked="checked"/>
+          <input type="checkbox" class="flipswitch" name="autocrop" id="autocrop" checked="checked"/>
         </div>
     </div>
     <div class="dz-message"><span>NOTE: You can drop a photo here to upload instead</span></div>
   </form>
 </div>
 
+
+<div id='bulk_modal' class="modal_dialog hidden block_buttons">
+  <input type="button" value="Bulk Check-In"
+    onclick="bulk_check_in(true);"/>
+  <input type="button" value="Bulk Check-In Undo"
+    onclick="bulk_check_in(false);"/>
+  <br/>
+  <input type="button" value="Bulk Numbering"
+    onclick="bulk_numbering();"/>
+  <input type="button" value="Bulk Eligibility"
+    onclick="bulk_eligibility();"/>
+  <br/>
+  <input type="button" value="Cancel"
+    onclick='close_modal("#bulk_modal");'/>
+</div>
+
+<div id="bulk_details_modal" class="modal_dialog hidden block_buttons">
+    <form id="bulk_details">
+      <h2 id="bulk_details_title"></h2>
+
+      <label id="who_label" for="bulk_who">Assign car numbers to</label>
+      <select id="bulk_who">
+        <option value="all">All</option>
+        <?php echo $ranks_and_classes; ?>
+      </select>
+
+      <div id="numbering_controls" class="hidable">
+        <label for="bulk_numbering_start">Starting from:</label>
+        <input type="number" id="bulk_numbering_start" name="bulk_numbering_start"
+               value="101"/>
+
+        <label for="renumber">Renumber cars that already have numbers?</label>
+          <input type="checkbox" class="flipswitch renumber-flip" name="renumber" id="renumber"
+                 data-on-text="Yes" data-off-text="No"    />
+      </div>
+
+      <div id="elibility_controls" class="hidable">
+        <label for="bulk_eligible">Trophy eligibility:</label>
+        <input type="checkbox" class="flipswitch eligible-flip"
+               checked="checked"
+               name="bulk_eligible" id="bulk_eligible"
+               data-wrapper-class="trophy-eligible-flipswitch"
+               data-off-text="Excluded"
+               data-on-text="Eligible"/>
+      </div>
+    
+      <input type="submit"/>
+      <input type="button" value="Cancel"
+        onclick='close_secondary_modal("#bulk_details_modal");'/>
+    </form>
+</div>
+
+
+<div id="barcode_settings_modal" class="modal_dialog hidden block_buttons">
+  <form>
+    <h2>Barcode Responses</h2>
+    <input name="barcode-handling" id="barcode-handling-radio-checkin" type="radio" value="checkin"/>
+    <label for="barcode-handling-radio-checkin">Check in racer</label>
+    <input name="barcode-handling" id="barcode-handling-radio-locate" type="radio" value="locate"/>
+    <label for="barcode-handling-radio-locate">Locate racer</label>
+
+    <input type="submit" value="Close"/>
+  </form>
+</div>
+
 <?php require_once('inc/ajax-pending.inc'); ?>
 <div id="find-racer">
-  <form id="find-racer-form">
+  <div id="find-racer-form">
     Find Racer:
-    <input type="text" id="find-racer-text" name="narrowing-text" data-enhanced="true"/>
+    <input type="text" id="find-racer-text" name="narrowing-text" class="not-mobile"/>
     <span id="find-racer-message"><span id="find-racer-index" data-index="1">1</span> of <span id="find-racer-count">0</span></span>
     <img onclick="cancel_find_racer()" src="img/cancel-20.png"/>
-  </form>
+  </div>
 </div>
 </body>
 </html>

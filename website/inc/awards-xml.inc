@@ -1,6 +1,7 @@
 <?php
 
 require_once('inc/awards.inc');
+require_once('inc/classes.inc');
 require_once('inc/classes-xml.inc');
 require_once('inc/standings.inc');
 
@@ -19,6 +20,8 @@ function emit_award_types($include_ad_hoc) {
 
 function emit_all_awards($include_ad_hoc) {
   global $db;
+  $agg_classes = aggregate_classes();
+  compute_aggregate_constituents_tc($agg_classes);
   foreach (all_awards($include_ad_hoc) as $award) {
     echo '<award';
     echo ' awardid="'.$award['awardid'].'"';
@@ -26,6 +29,15 @@ function emit_all_awards($include_ad_hoc) {
     echo ' awardtypeid="'.$award['awardtypeid'].'"';
     echo ' adhoc="'.($award['awardtypeid'] == AD_HOC_AWARDTYPEID ? 1 : 0).'"';
     echo ' classid="'.@$award['classid'].'"';
+    // For awards on aggregate classes, the award can be given to any members of
+    // the native classes that comprise the aggregate class, perhaps indirectly.
+    // For these cases, the 'eligible' attribute names all those native classes.
+    // (Otherwise, a racer's eligibility for an award is determined by the
+    // classid attribute, which must be either 0 or the same as the racer's
+    // native class.)
+    if (isset($award['classid']) && isset($agg_classes[$award['classid']])) {
+      echo ' eligible="'.implode(',', $agg_classes[$award['classid']]['constituents_tc']) .'"';
+    }
     echo ' rankid="'.@$award['rankid'].'"';
     echo ' racerid="'.$award['racerid'].'"';
     echo ' firstname="'.htmlspecialchars($award['firstname'], ENT_QUOTES, 'UTF-8').'"';
@@ -36,34 +48,19 @@ function emit_all_awards($include_ad_hoc) {
   }
 }
 
-// $category is one of 'supergroup', 'group', 'subgroup'
-function emit_one_speed_award($racerid, $category, $place) {
-  echo "<speed-award racerid=\"".$racerid."\" category=\"".$category."\" place=\"".$place."\"/>\n";
-}
-
-function emit_speed_award_group($n, $category, &$finishers) {
-  for ($p = 0; $p < $n; ++$p) {
-    foreach ($finishers[$p] as $racerid) {
-      emit_one_speed_award($racerid, $category, 1 + $p);
-    }
-  }
-}
-
 function emit_speed_awards() {
-  $n_per_den = read_raceinfo('n-den-trophies', 3);
-  $n_per_rank = read_raceinfo('n-rank-trophies', 0);
-
-  $standings = final_standings(/* completed only */ true);
-
-  emit_speed_award_group(read_raceinfo('n-pack-trophies', 3), 'supergroup',
-                         top_finishers(null, null, $standings));
-  
-  list($classes, $classseq, $ranks, $rankseq) = classes_and_ranks();
-  foreach ($classseq as $c) {
-    emit_speed_award_group($n_per_den, 'group', top_finishers($c, null, $standings));
-  }
-  foreach ($rankseq as $r) {
-    emit_speed_award_group($n_per_rank, 'subgroup', top_finishers(null, $r, $standings));
+  $awards = array();
+  add_speed_awards($awards);
+  foreach ($awards as $award) {
+    echo "<speed-award racerid=\"$award[racerid]\" key=\"$award[awardkey]\"";
+    if (isset($award['rankid'])) {
+      echo " category=\"subgroup\" classid=\"$award[classid]\" rankid=\"$award[rankid]\"";
+    } else if (isset($award['classid'])) {
+      echo " category=\"group\" classid=\"$award[classid]\"";
+    } else {
+      echo " category=\"supergroup\"";
+    }
+    echo " place=\"$award[place]\"/>\n";
   }
 }
 

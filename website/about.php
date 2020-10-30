@@ -12,7 +12,26 @@ require_once('inc/banner.inc');
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
 <title>About DerbyNet</title>
 <?php require('inc/stylesheet.inc'); ?>
+<script type="text/javascript">
+window.onload = function() {
+  var span = document.getElementById("useragent");
+  if (span) {
+    span.innerHTML = navigator.userAgent;
+  }
+};
+</script>
 <style type="text/css">
+
+.advert {
+  font-size: 18px;
+  border: 5px solid #023882;
+  background-color: #fcf0b5;
+  padding: 20px;
+  margin-bottom: 50px;
+  margin-left: 50px;
+  margin-right: 50px;
+}
+
 .ip_addr { border: 2px solid red;  padding: 2px; }
 
 .phpinfo {background-color: #ffffff; color: #000000;}
@@ -43,7 +62,7 @@ require_once('inc/banner.inc');
   position: absolute;
   top: 100px;
   right: 50px;
-  height: 50px;
+  height: 100px;
   width: 250px;
   padding-top: 30px;
   text-align: center;
@@ -60,7 +79,10 @@ require_once('inc/banner.inc');
 <div class="main-body">
 <h1>About DerbyNet</h1>
 
-<p></p>
+<p class='advert'><b>DerbyNet</b> is the free, open-source, multi-screen race management system for Pinewood Derby-style racing.  It's used by packs and other groups all around the country, and around the globe!
+Check us out <a href="http://jeffpiazza.github.io/derbynet/">on GitHub!</a></p>
+
+
 
 <?php
 $addrs = gethostbynamel(gethostname());
@@ -88,6 +110,8 @@ if (count($addrs) == 0) {
 
 <p>Please include this page if you wish to report a bug, and
    contact me at <a href="mailto:bugs@jeffpiazza.org">bugs@jeffpiazza.org</a>.</p>
+
+<p>Your browser's User Agent string is<br/><span id="useragent"></span>.</p>
 
 <h4>DerbyNet Revision</h4>
 <?php 
@@ -152,14 +176,59 @@ if (isset($db)) {
     echo '<p>Schema version '.$schema_version.' (expecting version '.expected_schema_version().')</p>'."\n";
 
     if (have_permission(SET_UP_PERMISSION)) {
-      echo "<p class='capture-link'><a download='derbynet-".date('Ymd-His').".xml'"
-           ." href='action.php?query=snapshot.get'>Download Database Snapshot</a></p>\n";
+      echo "<p class='capture-link'>Download Database Snapshot:<br/>"
+           ."<a download='derbynet-".date('Ymd-His').".xml'"
+           ." href='action.php?query=snapshot.get'>Complete</a>"
+           ."<br/>or<br/>"
+           ."<a download='derbynet-".date('Ymd-His').".xml'"
+           ." href='action.php?query=snapshot.get&amp;clean'>Cleaned</a>"
+           ."</p>\n";
     }
 
   } catch (PDOException $p) {
     echo '<p>Can\'t determine schema version (expecting version '.expected_schema_version().')</p>'."\n";
   }
 }
+?>
+<?php
+  if (isset($db)) {
+    function read_single_row($sql, $params = array(), $fetch = PDO::FETCH_NUM) {
+      global $db;
+      $rs = $db->prepare($sql);
+      $rs->execute($params);
+      $row = $rs->fetch($fetch);
+      $rs->closeCursor();
+      return $row;
+    }
+
+    function read_single_value($sql, $params = array(), $def = false) {
+      $row = read_single_row($sql, $params);
+      if ($row === false || $row[0] === null) {
+        return $def;
+      }
+
+      return $row[0];
+    }
+
+    function read_raceinfo($key, $def = false) {
+      return read_single_value('SELECT itemvalue FROM RaceInfo WHERE itemkey = :key',
+                               array(':key' => $key), $def);
+    }
+
+
+    $timer = read_raceinfo('timer-type');
+    if ($timer) {
+      echo "<h4>Timer</h4>\n";
+      echo "<p>";
+      echo htmlspecialchars($timer, ENT_QUOTES, 'UTF-8');
+
+      $timer_ident = read_raceinfo('timer-ident');
+      if ($timer_ident) {
+        echo " (".$timer_ident.")";
+      }
+      echo "</p>\n";
+    }
+  }
 ?>
 <h4>PHP Configuration Information</h4>
 </div>

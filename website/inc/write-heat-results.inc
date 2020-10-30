@@ -1,5 +1,9 @@
 <?php
 
+require_once('inc/last-heat.inc');
+require_once('inc/timer-test.inc');
+
+define('DNF_TIME', 9.9999);
 
 function compare_by_finishtime(&$lhs, &$rhs) {
   if ($lhs['finishtime'] == $rhs['finishtime']) return 0;
@@ -8,14 +12,28 @@ function compare_by_finishtime(&$lhs, &$rhs) {
 
 // $_POST['lane1'], $_POST['lane2'], etc. for times
 // Optionally, $_POST['place1'], $_POST['place2'], etc., for places (by lane)
-
+//
 function write_heat_results() {
   global $db;
 
   $current = get_running_round();
   $roundid = @$current['roundid'];
+  $heat = @$current['heat'];
 
-  if (!$roundid || $roundid < 0) {
+  if ($roundid == TIMER_TEST_ROUNDID) {
+    // For timer testing, store (only) the most recently reported times and
+    // places, in RaceInfo table, along with the "heat" with which they're
+    // associated.  (tt-results-heat lets the timer page know when to clear old
+    // results because new results are available.)
+    timer_test_clear_old_results();
+    timer_test_record_heat($heat);
+    foreach ($_POST as $key => $value) {
+      if (substr($key, 0, 4) == 'lane' || substr($key, 0, 5) == 'place') {
+        timer_test_store_result($key, $value);
+      }
+    }
+    return true;
+  } else if (!$roundid || $roundid < 0) {
     echo '<failure code="nocurrentround">No currently-racing round is available!</failure>';
     return false;
   } else {
@@ -25,15 +43,17 @@ function write_heat_results() {
     // somewhere that can be presented on coordinator dashboard.
 
     $all_times = array();  // array of {resultid, lane, finishtime, finishplace} for scheduled lanes
+    $all_times_posted = true;
+    $all_places_posted = true;
+
     $stmt = $db->prepare('SELECT resultid, lane, finishtime, finishplace, completed FROM RaceChart'
                          .' WHERE roundid = :roundid AND heat = :heat'
                          .' ORDER BY lane');
     $stmt->execute(array(':roundid' => $roundid,
-                         ':heat' => $current['heat']));
+                         ':heat' => $heat));
 
     // For each scheduled lane, fetch existing results and overwrite new posted
     // results.
-    $all_places_present = true;
     foreach ($stmt as $row) {
       $lane = $row['lane'];
       $all_times[] = array('resultid' => $row['resultid'],
@@ -43,20 +63,32 @@ function write_heat_results() {
       // If $_POST doesn't include a new value for finishtime, then leave
       // the old one (if there was one).
       if (isset($_POST['lane'.$lane])) {
-        $all_times[count($all_times) - 1]['finishtime'] = $_POST['lane'.$lane];
+        $result = $_POST['lane'.$lane];
+        if ($result == '') $result = 0.0;
+        $all_times[count($all_times) - 1]['finishtime'] = $result;
+      } else {
+        if (!isset($all_times[count($all_times) - 1]['finishtime'])) {
+          $all_times[count($all_times) - 1]['finishtime'] = DNF_TIME;
+        }
+        $all_times_posted = false;
       }
       if (isset($_POST['place'.$lane])) {
         $all_times[count($all_times) - 1]['finishplace'] = $_POST['place'.$lane];
       } else {
-        $all_places_present = false;
+        $all_places_posted = false;
       }
     }
     $stmt->closeCursor();
 
-    if (!$all_places_present) {
+    if (!$all_places_posted && $all_times_posted) {
+      // Make up finish places based on finish times, if finish places weren't
+      // included in the post.  The $all_times_posted test is to avoid computing
+      // places if not all times were reported.
       usort($all_times, 'compare_by_finishtime');  // Now index gives finish place - 1
       for ($i = 0; $i < count($all_times); ++$i) {
-        $all_times[$i]['finishplace'] = 1 + $i;
+        if (isset($all_times[$i]['finishtime'])) {
+          $all_times[$i]['finishplace'] = 1 + $i;
+        }
       }
     }
 
@@ -71,6 +103,8 @@ function write_heat_results() {
                                  ':resultid' => $content['resultid']));
     }
 
+    record_last_heat($roundid, $heat);
+    
     return true;
   }
 }

@@ -16,22 +16,25 @@
 # session.gc_maxlifetime, to be sure that session cookies won't get reclaimed
 # before we're done.
 #
-# Obtain the 'barcode' command:
-#
-# git clone https://github.com/jeffpiazza/read-barcode.git
-# cd read-barcode
-# make
-# sudo cp barcode /usr/local/bin
-#
 
-BARCODE_SCANNER_DEV=/dev/input/by-id/usb-Megawin_Technology_Inc._USB_Keyboard-event-kbd
+# Establish default values; photo-preamble will override from user config files.
+#  Looks in /dev/input/by-id for any of the scanner devs, or just any device at all.
+BARCODE_SCANNER_DEVS=""
+
+# One of: "chdkptp", "fswebcam", or "gphoto2"; an empty string is interpreted as gphoto2.
+PHOTO_CAPTURE=
+
+FSWEBCAM_ARGS="--config /usr/share/derbynet/conf/fswebcam.conf"
 
 SELF="$0"
 # readlink -f exists in linux (particularly RPi), but not e.g. Mac
 [ -L "$SELF" ] && SELF=`readlink -f "$SELF"`
 SELF_DIR=`dirname "$SELF"`
-. "$SELF_DIR"/lib/photo-preamble.sh
-. "$SELF_DIR"/lib/photo-functions.sh
+LIB_DIR="$SELF_DIR/lib"
+
+. "$LIB_DIR"/photo-preamble.sh
+. "$LIB_DIR"/photo-functions.sh
+READ_BARCODE="$LIB_DIR"/read_barcode.py
 
 rm uploads.log > /dev/null
 rm checkins.log > /dev/null
@@ -40,12 +43,22 @@ killall_gvfs_volume_monitor
 
 do_login
 
+define_photo_directory
+
 check_scanner
 
-check_camera
+# Even if camera is missing, allow barcode loop to proceed, so at least QUIT
+# command can be recognized.
+check_camera &
 
 while true ; do
-    BARCODE=`barcode $BARCODE_SCANNER_DEV`
+    DEV="`find_barcode_scanner`"
+    if [ -z "$DEV" ] ; then
+        announce no-scanner
+        sleep 5s
+        continue
+    fi
+    BARCODE=`$READ_BARCODE "$DEV"`
     echo Scanned $BARCODE
     CAR_NO=`echo $BARCODE | grep -e "^PWD" | sed -e "s/^PWD//"`
     if [ "$BARCODE" = "QUITQUITQUIT" ] ; then
@@ -58,18 +71,28 @@ while true ; do
         maybe_check_in_racer
 
         echo Capturing photo Car$CAR_NO.jpg
-        if [ $USE_CHDKPTP -eq 0 ] ; then
-            gphoto2 --filename "$PHOTO_DIR/Car$CAR_NO" --capture-image-and-download
-        else
+        CAPTURE_OK=0
+        if [ "$PHOTO_CAPTURE" = "chdkptp" ] ; then
             prepare_camera_before_shot
-            chdkptp -c -e"rec" -e"remoteshoot $PHOTO_DIR/Car$CAR_NO"
-            echo chdkptp says $?
+            # remoteshoot takes a file name without extension
+            chdkptp -c -e"rec" -e"remoteshoot $PHOTO_DIR/Car$CAR_NO" \
+                    && CAPTURE_OK=1
+        elif [ "$PHOTO_CAPTURE" = "fswebcam" ] ; then
+            fswebcam $FSWEBCAM_ARGS "$PHOTO_DIR/Car$CAR_NO.jpg"
+            # fswebcam always returns 0, whether successful or not
+            CAPTURE_OK=1
+        else
+            gphoto2 --filename "$PHOTO_DIR/Car$CAR_NO.jpg"  --force-overwrite \
+                    --capture-image-and-download \
+                && CAPTURE_OK=1
         fi
 
-        announce capture-ok
-
-        upload_photo "$PHOTO_DIR/Car$CAR_NO.jpg"
-
+        if [ $CAPTURE_OK -eq 1 ] ; then
+            announce capture-ok
+            upload_photo "$PHOTO_DIR/Car$CAR_NO.jpg"
+        else
+            announce capture-failed
+        fi
     else
         echo Rejecting scanned barcode $BARCODE
         announce unrecognized-barcode

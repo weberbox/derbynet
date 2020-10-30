@@ -1,6 +1,8 @@
 package org.jeffpiazza.derby.devices;
 
 import jssc.SerialPortException;
+import org.jeffpiazza.derby.Flag;
+import org.jeffpiazza.derby.LogWriter;
 import org.jeffpiazza.derby.Message;
 import org.jeffpiazza.derby.serialport.SerialPortWrapper;
 import org.jeffpiazza.derby.Timestamp;
@@ -8,7 +10,9 @@ import org.jeffpiazza.derby.Timestamp;
 public abstract class TimerDeviceCommon
     extends TimerDeviceBase
     implements TimerDevice, RacingStateMachine.TransitionCallback {
+
   protected RacingStateMachine rsm;
+  protected String timerIdentifier;
 
   protected TimerDeviceCommon(SerialPortWrapper portWrapper,
                               GateWatcher gateWatcher) {
@@ -19,8 +23,7 @@ public abstract class TimerDeviceCommon
                               GateWatcher gateWatcher,
                               boolean gate_state_is_knowable) {
     super(portWrapper);
-    this.rsm = new RacingStateMachine(gate_state_is_knowable, this,
-                                      portWrapper.logWriter());
+    this.rsm = new RacingStateMachine(gate_state_is_knowable, this);
     this.gateWatcher = gateWatcher;
   }
 
@@ -52,6 +55,29 @@ public abstract class TimerDeviceCommon
     }
   }
 
+
+  // System time at which raceFinished was last called.
+  private long lastFinishTime = 0;
+  private int pendingLaneMask = 0;
+  private boolean laneMaskIsPending = false;
+
+  // If non-zero, then avoid resetting the timer display until this time
+  protected long displayHoldUntilMillis() {
+    return lastFinishTime == 0 ? 0
+           : lastFinishTime + Flag.delay_reset_after_race.value() * 1000;
+  }
+
+  protected synchronized void maybeProcessPendingLaneMask()
+      throws SerialPortException {
+    if (laneMaskIsPending) {
+      if (System.currentTimeMillis() >= displayHoldUntilMillis()) {
+        describeLaneMask(pendingLaneMask);
+        maskLanes(pendingLaneMask);
+        laneMaskIsPending = false;
+      }
+    }
+  }
+
   public void prepareHeat(int roundid, int heat, int lanemask)
       throws SerialPortException {
     RacingStateMachine.State state = rsm.state();
@@ -61,13 +87,18 @@ public abstract class TimerDeviceCommon
     if (this.roundid == roundid && this.heat == heat
         && (state == RacingStateMachine.State.MARK
             || state == RacingStateMachine.State.SET)) {
-      portWrapper.logWriter().traceInternal("Ignoring redundant prepareHeat()");
+      LogWriter.trace("Ignoring redundant prepareHeat()");
       return;
     }
 
     prepare(roundid, heat);
-    describeLaneMask(lanemask);
-    maskLanes(lanemask);
+
+    synchronized (this) {
+      pendingLaneMask = lanemask;
+      laneMaskIsPending = true;
+      maybeProcessPendingLaneMask();
+    }
+
     rsm.onEvent(RacingStateMachine.Event.PREPARE_HEAT_RECEIVED);
   }
 
@@ -75,6 +106,10 @@ public abstract class TimerDeviceCommon
   // or some upper bound on the number of supported lanes.
   public int getSafeNumberOfLanes() throws SerialPortException {
     return getNumberOfLanes();
+  }
+
+  public String getTimerIdentifier() {
+    return timerIdentifier;
   }
 
   public String describeLaneMask(int lanemask) throws SerialPortException {
@@ -91,6 +126,7 @@ public abstract class TimerDeviceCommon
 
   protected void raceFinished(Message.LaneResult[] results)
       throws SerialPortException {
+    lastFinishTime = System.currentTimeMillis();
     rsm.onEvent(RacingStateMachine.Event.RESULTS_RECEIVED);
     invokeRaceFinishedCallback(roundid, heat, results);
     roundid = heat = 0;
@@ -98,12 +134,13 @@ public abstract class TimerDeviceCommon
 
   public void abortHeat() throws SerialPortException {
     rsm.onEvent(RacingStateMachine.Event.ABORT_HEAT_RECEIVED);
+    lastFinishTime = 0;
     roundid = heat = 0;
   }
 
   protected void logOverdueResults() {
     String msg = Timestamp.string() + ": ****** Race timed out *******";
-    portWrapper.logWriter().traceInternal(msg);
+    LogWriter.trace(msg);
     System.err.println(msg);
   }
 
@@ -111,6 +148,10 @@ public abstract class TimerDeviceCommon
     // Keeps track of last known state of the gate
     protected boolean gateIsClosed;
     protected SerialPortWrapper portWrapper;
+
+    // Tracks the clock time when the state first appeared to change, or 0 if
+    // the interrogated gate state hasn't changed.
+    protected long timeOfFirstChange = 0;
 
     public GateWatcher(SerialPortWrapper portWrapper) {
       this.portWrapper = portWrapper;
@@ -134,21 +175,39 @@ public abstract class TimerDeviceCommon
     protected boolean updateGateIsClosed()
         throws SerialPortException, LostConnectionException {
       try {
-        setGateIsClosed(interrogateGateIsClosed());
+        boolean isClosedNow = interrogateGateIsClosed();
+        synchronized (this) {
+          if (isClosedNow == gateIsClosed) {
+            timeOfFirstChange = 0;
+          } else {
+            // Issue #35: If we have an apparent state change, don't record it
+            // until it's stayed in the new state for a minimum length of time.
+            // (Original issue report involved a SmartLine timer.)
+            long now = System.currentTimeMillis();
+            if (timeOfFirstChange == 0) {
+              timeOfFirstChange = now;
+            } else if (now - timeOfFirstChange > Flag.min_gate_time.value()) {
+              gateIsClosed = isClosedNow;
+              timeOfFirstChange = 0;
+            }
+          }
+        }
       } catch (NoResponseException ex) {
         portWrapper.checkConnection();
 
         // Don't know, assume unchanged
-        portWrapper.logWriter().serialPortLogInternal(
-            "** Unable to determine starting gate state");
+        LogWriter.serial("** Unable to determine starting gate state");
         System.err.println(Timestamp.string() + ": Unable to read gate state");
       }
       return getGateIsClosed();
     }
   }
+
   protected GateWatcher gateWatcher = null;
 
   public void poll() throws SerialPortException, LostConnectionException {
+    maybeProcessPendingLaneMask();
+
     RacingStateMachine.State state = rsm.state();
     // If the gate is already closed when a PREPARE_HEAT message was delivered,
     // the PREPARE_HEAT will have left us in a MARK state, but we need to
@@ -210,6 +269,11 @@ public abstract class TimerDeviceCommon
                                     RacingStateMachine.State newState)
       throws SerialPortException;
 
+  protected void setGateStateNotKnowable() {
+    rsm.setGateStateNotKnowable();
+    gateWatcher = null;
+  }
+
   // A reasonably common scenario is this: if the gate opens accidentally
   // after the PREPARE_HEAT, the timer starts but there are no cars to
   // trigger a result.  When that happens, some timers support a "force output"
@@ -232,8 +296,6 @@ public abstract class TimerDeviceCommon
     // We'd like to alert the operator to intervene manually, but
     // as currently implemented, a malfunction(false) message would require
     // unplugging/replugging the timer to reset: too invasive.
-    portWrapper.logWriter().
-        serialPortLogInternal(
-            "No result from timer for the running race; giving up.");
+    LogWriter.serial("No result from timer for the running race; giving up.");
   }
 }

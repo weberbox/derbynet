@@ -52,17 +52,6 @@ function get_replay() {
                'trouble' => $trouble);
 }
 
-// Tells whether the replay service has recently reported (within the last
-// second or two) that it's playing back video.
-function replay_playing() {
-  $t = time();
-  return read_raceinfo('replay_reported', 0) == REPLAY_REPORTED_PLAYING
-      // This is a safeguard against the Replay app not reporting its state
-      // change correctly
-      && $t - read_raceinfo('replay_started_playing_at', 0) < 90
-      && $t - read_raceinfo('replay_last_contact', 0) < 2;
-}
-
 function send_replay_message($cmd) {
   global $db;
   $replay = get_replay();
@@ -105,6 +94,14 @@ function send_replay_REPLAY() {
 // "CANCEL  -- cancel recording\r\n"
 function send_replay_CANCEL() {
   send_replay_message("CANCEL");
+}
+
+// RACE_STARTS skipback showings rate -- induce a replay in replay-skipback less epsilon
+function send_replay_RACE_STARTS() {
+  $skipback = read_raceinfo('replay-skipback', '4');
+  $num_showings = read_raceinfo('replay-num-showings', '2');
+  $rate = read_raceinfo('replay-rate', '0.5');
+  send_replay_message("RACE_STARTS $skipback $num_showings $rate");
 }
 
 ?>

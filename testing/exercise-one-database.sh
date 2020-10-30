@@ -27,7 +27,7 @@ run_tests() {
     `dirname $0`/photo-setup.sh "$BASE_URL"
     `dirname $0`/test-photo-upload.sh "$BASE_URL"
 
-    `dirname $0`/test-basic-javascript.sh "$BASE_URL"
+    # `dirname $0`/test-basic-javascript.sh "$BASE_URL"
     `dirname $0`/test-each-role.sh "$BASE_URL"
     `dirname $0`/test-permissions.sh $BASE_URL
 
@@ -35,15 +35,17 @@ run_tests() {
     `dirname $0`/test-basic-javascript.sh "$BASE_URL"
     `dirname $0`/test-awards.sh "$BASE_URL" basic
     `dirname $0`/test-new-rounds.sh "$BASE_URL"
-    `dirname $0`/test-basic-javascript.sh "$BASE_URL"
+    # `dirname $0`/test-basic-javascript.sh "$BASE_URL"
     `dirname $0`/test-each-role.sh "$BASE_URL"
+    `dirname $0`/test-scenes.sh "$BASE_URL"
 
-    # TODO This gives different results depending on library version?
-    # `dirname $0`/test-photo-manipulations.sh "$BASE_URL"
+    `dirname $0`/test-photo-manipulations.sh "$BASE_URL"
     `dirname $0`/test-photo-assignments.sh "$BASE_URL"
     `dirname $0`/test-photo-next.sh "$BASE_URL"
 
     `dirname $0`/test-racer-query.sh "$BASE_URL"
+
+    `dirname $0`/test-extended-scheduling.sh "$BASE_URL"
 
 ############################## Standings by Rank ##############################
     `dirname $0`/test-standing-by-rank.sh "$BASE_URL"
@@ -52,19 +54,30 @@ run_tests() {
 ############################## Points Racing ##############################
     `dirname $0`/test-points-racing.sh "$BASE_URL"
 
+############################## Rounds Playlist ##############################
+    `dirname $0`/test-playlist.sh "$BASE_URL"
+
+############################## One-Run-Per-Car Racing ##############################
+    `dirname $0`/test-model-a-club.sh "$BASE_URL"
+
+    `dirname $0`/test-messaging.sh "$BASE_URL"
+
 ############################## Master Schedule ##############################
     `dirname $0`/reset-database.sh "$BASE_URL"
     `dirname $0`/import-roster.sh "$BASE_URL"
     `dirname $0`/test-den-changes.sh "$BASE_URL"
     `dirname $0`/test-master-schedule.sh "$BASE_URL"
-    `dirname $0`/test-basic-javascript.sh "$BASE_URL"
+    # `dirname $0`/test-basic-javascript.sh "$BASE_URL"
     `dirname $0`/test-awards.sh "$BASE_URL" master
     `dirname $0`/test-new-rounds.sh "$BASE_URL"
     `dirname $0`/test-each-role.sh "$BASE_URL"
-    # `dirname $0`/test-photo-manipulations.sh "$BASE_URL"
+    `dirname $0`/test-photo-manipulations.sh "$BASE_URL"
     `dirname $0`/test-photo-assignments.sh "$BASE_URL"
     `dirname $0`/test-photo-upload.sh "$BASE_URL"
     `dirname $0`/test-each-role.sh "$BASE_URL"
+
+    `dirname $0`/test-aggregate-rounds.sh "$BASE_URL"
+    `dirname $0`/test-aggregate-classes.sh "$BASE_URL"
 
 ############################## Snapshot Export and Import ##############################
     `dirname $0`/reset-database.sh "$BASE_URL"
@@ -104,16 +117,6 @@ elif [ "$DBTYPE" == "sqlite" ] ; then
         "action=setup.nodata&connection_string=sqlite:$DBPATH&dbuser=&dbpass=" \
         | check_success
     run_tests
-elif [ "$DBTYPE" == "mysql" ] ; then
-    echo DbType
-    DBNAME=${1:-trial3}
-    DBUSER=${2:-$DBNAME}
-    DBPASS=${3:-}
-    prepare_for_setup
-    curl_post action.php \
-              "action=setup.nodata&connection_string=mysql:host=localhost;dbname=$DBNAME&dbuser=$DBUSER&dbpass=$DBPASS" \
-        | check_success
-    run_tests
 elif [ "$DBTYPE" == "access" ] ; then
     prepare_for_setup
     curl_post action.php \
@@ -132,7 +135,7 @@ elif [ "$DBTYPE" == "access" ] ; then
 else
     tput setaf 1  # red text
     echo Unrecognized database type: $DBTYPE
-    echo Known types are: sqlite mysql access
+    echo Known types are: sqlite access
     tput setaf 0  # black text
     exit 1
 fi

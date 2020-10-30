@@ -135,11 +135,24 @@ function removeRacerPhoto(previous) {
 }
 
 
-function setupPhotoCrop(repo_name, basename, time) {
-  // RENDER_WORKING
-  $("#work_image").html('<img src="photo.php/' + repo_name + '/file/work/' + basename + '/' + time + '"/>');
+var g_crop;
+function updateCrop(c) {
+  g_crop = c;
+}
 
-  // TODO: Figure out how to center the image
+function setupPhotoCrop(repo_name, basename, time) {
+  $("#photo_basename").text(basename);
+  // 'work' = RENDER_WORK; based on the original photo, not cropped
+  $("#work_image").html('<img src="photo.php/' + repo_name + '/file/work/' + basename + '/' + time + '"/>');
+  $("#work_image img").on('load', function() { on_work_image_loaded(this); });
+}
+
+function on_work_image_loaded(img) {
+  var m = ($("#work_image").parent().width() - $(img).width()) / 2;
+  $("#work_image").css('margin-left', m).css('margin-right', m);
+  // jcrop seems to copy the img element, and we don't want to fire when the
+  // copy img loads.
+  $("#work_image img").off('load');
 
   g_crop = null;
 
@@ -158,10 +171,6 @@ function showPhotoCropModal(img, repo_name, basename, time) {
   show_modal('#photo_crop_modal');
 }
 
-var g_crop;
-function updateCrop(c) {
-  g_crop = c;
-}
 
 // Updates the url for an <img/> element to include a new cache-breaker
 // timestamp, which effectively causes the image to be reloaded from the server.
@@ -219,6 +228,22 @@ function rotatePhoto(angle) {
          });
 }
 
+function on_delete_photo_button() {
+  var photo_data = $("#work_image").data('photo');
+  show_secondary_modal("#delete_confirmation_modal", function(event) {
+    close_secondary_modal("#delete_confirmation_modal");
+    $.ajax(g_action_url,
+           {type: 'POST',
+            data: {action: 'photo.delete',
+                   repo: photo_data.repo,
+                   photo: photo_data.basename},
+            success: function (data) {
+              location.reload(true);
+            }});
+    close_modal('#photo_crop_modal');
+  });
+}
+
 
 // For #upload-target div:
 Dropzone.options.uploadTarget = {
@@ -246,9 +271,11 @@ Dropzone.options.uploadTarget = {
                                 '<img class="unassigned-photo"/>' +
                                 '</div>');
               new_thumb.find('img')
-                  .attr('data-image-filename', uploaded)
-                  .attr('src', thumb)
-                  .on('click', function() { photo_crop_expression(uploaded); });
+                .attr('data-image-filename', uploaded)
+                .attr('src', thumb)
+                .attr('onclick', 'showPhotoCropModal(this, ' +
+                                      '\'' + g_photo_repo_name + '\', ' +
+                                      '\'' + uploaded + '\', 0)');
               new_thumb.insertBefore($(this).parent());
               make_draggable_photo(new_thumb.find('img'));
               return false;  // exit the loop

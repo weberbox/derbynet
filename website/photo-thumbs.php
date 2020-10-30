@@ -7,7 +7,10 @@ require_permission(ASSIGN_RACER_IMAGE_PERMISSION);
 
 require_once('inc/photo-config.inc');
 
-$photo_repository = photo_repository(isset($_GET['repo']) ? $_GET['repo'] : 'head');
+$repo = isset($_GET['repo']) ? $_GET['repo'] : 'head';
+$photo_repository = photo_repository($repo);
+$other_repo =  $repo == 'car' ? 'head' : 'car';
+
 
 $order = '';
 if (isset($_GET['order']))
@@ -17,13 +20,17 @@ if (!$order)
 
 function link_for_ordering($key, $text) {
   global $order, $photo_repository;
-  echo "<a ";
+  echo "<div class='sort_div'>";
+  echo "<a class='sort_button button_link";
   if ($order == $key) {
-    echo 'class="current_sort"';
+    echo ' current_sort';
   }
-  echo " href='photo-thumbs.php?repo=".$photo_repository->name()."&amp;order=".$key."'>";
+  echo "' href='photo-thumbs.php?repo=".$photo_repository->name()."&amp;order=".$key."'>";
+  //echo "<span class='sort_by'>Sort by</span>";
+  //echo "<br/>";
   echo $text;
   echo "</a>";
+  echo "</div>";
 }
 
 function scan_directory($directory, $pattern) {
@@ -62,14 +69,16 @@ function photo_crop_expression($basename) {
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
 <title>Assign Racer Photos</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<link rel="stylesheet" type="text/css" href="css/jquery.mobile-1.4.2.css"/>
+<link rel="stylesheet" type="text/css" href="css/jquery-ui.min.css"/>
+<link rel="stylesheet" type="text/css" href="css/mobile.css"/>
 <link rel="stylesheet" type="text/css" href="css/jquery.Jcrop.min.css"/>
 <link rel="stylesheet" type="text/css" href="css/dropzone.min.css"/>
 <?php require('inc/stylesheet.inc'); ?>
 <link rel="stylesheet" type="text/css" href="css/photo-thumbs.css"/>
 <script type="text/javascript" src="js/jquery.js"></script>
+<script type="text/javascript" src="js/ajax-setup.js"></script>
 <script type="text/javascript" src="js/dashboard-ajax.js"></script>
-<script type="text/javascript" src="js/jquery-ui-1.10.4.min.js"></script>
+<script type="text/javascript" src="js/jquery-ui.min.js"></script>
 <script type="text/javascript" src="js/jquery.ui.touch-punch.min.js"></script>
 <script type="text/javascript" src="js/dashboard-ajax.js"></script>
 <script type="text/javascript" src="js/modal.js"></script>
@@ -81,15 +90,15 @@ var g_photo_repo_name = '<?php echo $photo_repository->name(); ?>';
 <script type="text/javascript" src="js/photo-thumbs.js"></script>
 </head>
 <body>
-<?php make_banner(($photo_repository->name() == 'head' ? 'Racer' : 'Car').' Photos'); ?>
+<?php make_banner(($repo == 'head' ? 'Racer' : 'Car').' Photos'); ?>
 
 <div class="block_buttons">
 
 <div id="sort_controls">
-Sort racers by
-<?php link_for_ordering('name', "name,"); ?>
-<?php link_for_ordering('class', group_label_lc().","); ?> or
-<?php link_for_ordering('car', "car number"); ?>.
+<?php link_for_ordering('name', "Name"); ?>
+<?php link_for_ordering('class', group_label()); ?>
+<?php link_for_ordering('car', "Car#"); ?>.
+
 </div>
 
 <?php if (!is_writable($photo_repository->directory())) { ?>
@@ -113,15 +122,25 @@ Sort racers by
 
 <?php } ?>
 
-    <input type="button" value="Refresh" onclick="window.location.reload();"/>
-</div>
+   <div id="center_buttons">
+    <?php
+        echo "<a class='button_link' id='refresh-button' onclick='window.location.reload();'>Refresh</a>";
+        echo "<a class='button_link' id='other-button'"
+             ." href='photo-thumbs.php?repo=".$other_repo."&amp;order=".$order."'>";
+        echo $other_repo == 'head' ? 'Racers' : 'Cars';
+        echo "</a>";
+    ?>
+    </div>
+  </div>
 
 <div class="body-wrapper">
 
 <div class="thumblist">
-<ul data-role="listview" class="ui-listview">
+<ul class="mlistview has-thumbs">
 <?php
 require_once('inc/data.inc');
+
+$use_groups = use_groups();
 
 $racers_by_photo = array();
 $stmt = $db->query('SELECT racerid, lastname, firstname, '.$photo_repository->column_name().','
@@ -143,8 +162,8 @@ foreach ($stmt as $rs) {
 				 'racerid' => $rs['racerid'],
 				 'imagefile' => $raw_imagefile);
 
-
-  $css_classes = 'ui-li-static ui-li-has-thumb';
+  // CSS classes control drag and drop behavior
+  $css_classes = '';
   if ($raw_imagefile !== null && $raw_imagefile !== "") {  // If there's an associated photo...
 	$image_filename = basename($raw_imagefile);
 	$racers_by_photo[$image_filename] = $racer;
@@ -166,7 +185,11 @@ foreach ($stmt as $rs) {
       .' src="'.$photo_repository->lookup(RENDER_LISTVIEW)->render_url($image_filename).'"/>';
   }
   echo htmlspecialchars($rs['firstname'].' '.$rs['lastname'], ENT_QUOTES, 'UTF-8');
-  echo '<p><strong>'.$rs['carnumber'].':</strong> '.htmlspecialchars($rs['class'], ENT_QUOTES, 'UTF-8').'</p>';
+  if ($use_groups) {
+    echo '<p><strong>'.$rs['carnumber'].':</strong> '.htmlspecialchars($rs['class'], ENT_QUOTES, 'UTF-8').'</p>';
+  } else {
+    echo '<p><strong>'.$rs['carnumber'].'</strong></p>';
+  }
   echo '</li>'."\n";
 }
 
@@ -208,17 +231,36 @@ if (empty($allfiles)) {
 </div>
 
 <div id="photo_crop_modal" class="modal_dialog hidden block_buttons">
+<p id='photo_basename'></p>
 <div id="work_image"></div>
 
-<p>Indicate new crop boundary, <i>then</i> press Crop.</p>
-<input data-enhanced="true" type="button" value="Crop" onclick="cropPhoto(); return false;"/>
-<input data-enhanced="true" type="button" value="Rotate Right" onclick="rotatePhoto(-90); return false;"/>
-<input data-enhanced="true" type="button" value="Rotate Left" onclick="rotatePhoto(90); return false;"/>
-<input data-enhanced="true" type="button" value="Cancel" onclick="close_modal('#photo_crop_modal');"/>
+<p id="crop_instructions">Indicate new crop boundary, <i>then</i> press Crop.</p>
+<input type="button" value="Crop" onclick="cropPhoto(); return false;"/>
+<input type="button" value="Rotate Right" onclick="rotatePhoto(-90); return false;"/>
+<input type="button" value="Rotate Left" onclick="rotatePhoto(90); return false;"/>
+<input type="button" value="Cancel" onclick="close_modal('#photo_crop_modal');"/>
+
+<input type="button" value="Delete"
+    class="delete_button"
+    onclick="on_delete_photo_button(); return false;"/>
 </div>
 
 <div id="ajax_working" class="hidden">
   <span id="ajax_num_requests">0</span> request(s) pending.
 </div>
+
+
+<div id="delete_confirmation_modal" class="modal_dialog block_buttons hidden">
+  <form>
+    <p>Are you sure you want to delete this photo?</p>
+
+    <input type="submit" value="Delete Photo"/>
+
+    <p>&nbsp;</p>
+    <input type="button" value="Cancel"
+      onclick='close_secondary_modal("#delete_confirmation_modal");'/>
+  </form>
+</div>
+
 </body>
 </html>
