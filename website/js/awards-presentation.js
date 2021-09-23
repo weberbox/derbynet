@@ -83,56 +83,38 @@ function on_clear_awards() {
   $("#kiosk-summary").addClass('hidden');
 }
 
-function parse_award(data) {
-  var award_xml = data.getElementsByTagName('award')[0];
-  if (!award_xml) {
-    return false;
-  }
-  return {key: award_xml.getAttribute('key'),
-          reveal: award_xml.getAttribute('reveal') == 'true',
-          awardname: award_xml.getAttribute('awardname'),
-          carnumber: award_xml.getAttribute('carnumber'),
-          carname: award_xml.getAttribute('carname'),
-          firstname: award_xml.getAttribute('firstname'),
-          lastname: award_xml.getAttribute('lastname'),
-          classname: award_xml.getAttribute('classname'),
-          subgroup: award_xml.getAttribute('subgroup'),
-          headphoto: award_xml.getAttribute('headphoto'),
-          carphoto: award_xml.getAttribute('carphoto')};
-}
-
 function initialize_award_controls() {
   $.ajax(g_action_url,
          {type: 'GET',
           data: {query: 'award.current'},
           success: function(data) {
-            var award = parse_award(data);
-            if (!award) {
+            var award;
+            if (!data.hasOwnProperty('current')) {
               $("#rankname").text('');
               award = {key: '',
                        reveal: false,
                        awardname: '',
                        carnumber: '',
                        carname: '',
-                       firstname: '',
-                       lastname: '',
+                       recipient: '',
                        classname: '',
                        subgroup: '',
                        headphoto: '',
                        carphoto: ''};
             } else {
+              award = data.current;
               $(".presenter-inner").removeClass('hidden');
             }
-            $("#awardname").text(award['awardname']);
-            $("#recipient").text(award['firstname'] + ' ' + award['lastname']);
-            $("#carnumber").text(award['carnumber'] ? 'Car number ' + award['carnumber'] : '');
-            $("#carname").text(award['carname']);
-            $("#classname").text(award['classname']);
-            if (award['subgroup'] && award['subgroup'].length > 0) {
-              $("#rankname").text(award['subgroup']);
+            $("#awardname").text(award.awardname);
+            $("#recipient").text(award.recipient);
+            $("#carnumber").text(award.carnumber ? 'Car number ' + award.carnumber : '');
+            $("#carname").text(award.carname);
+            $("#classname").text(award.classname);
+            if (award.hasOwnProperty('subgroup') && award.subgroup.length > 0) {
+              $("#rankname").text(award.subgroup);
             }
             $("#kiosk-summary").addClass('hidden');
-            $("#reveal-checkbox").prop('checked', award['reveal']);
+            $("#reveal-checkbox").prop('checked', award.reveal);
             g_changing_awards = true;
             try {
               $("#reveal-checkbox").trigger("change", true);

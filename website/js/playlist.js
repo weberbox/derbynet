@@ -50,7 +50,12 @@ function setup_racing_scene_control(all_scenes, current_scene) {
 }
 
 function on_open_playlist_entry(evt) {
-  console.trace(); console.log(evt);
+  if ($(evt.target).is('select')) {
+    // This prevents collapsing the collapsible part in response to a click on
+    // one of the <select> elements.
+    return true;
+  }
+
   var li = $(this).closest('li');
   var closed = li.find(".collapsible").css("display") == "none";
 
@@ -117,7 +122,7 @@ function on_playlist_entry_update(li) {
 
   $.ajax('action.php',
          {type: 'POST',
-          data: {action: 'playlist.update',
+          data: {action: 'playlist.edit',
                  queueid: queueid,
                  top: entry.bucket_limit,
                  bucketed: entry.bucketed,
@@ -133,7 +138,7 @@ function on_remove_playlist_entry() {
   var li = $(this).closest('li');
   $.ajax('action.php',
          {type: 'POST',
-          data: {action: 'playlist.remove',
+          data: {action: 'playlist.delete',
                  queueid: g_queue[li.index()].queueid},
           success: function(data) {
             g_queue.splice(li.index(), 1);
@@ -172,7 +177,6 @@ function show_create_roster_dialog(classid, roundno) {
   // roster.new action:
   // For a follow-on round (round >= 2): $_POST['roundid'] + $_POST['top'] + ['bucketed']
   // For a first aggregate (round = 1 and no roundid), classid for the aggregate class, plus top + bucketed
-  classid = parseInt(classid);
   var cl = g_classes[classid];
 
   $("#add-to-queue-modal .hidable").addClass('hidden');
@@ -203,7 +207,7 @@ function show_create_roster_dialog(classid, roundno) {
 function add_round_to_queue(classid, round, roster_params) {
   $.ajax('action.php',
          {type: 'POST',
-          data: {action: 'playlist.new',
+          data: {action: 'playlist.add',
                  classid: classid,
                  round: round,
                  top: roster_params ? roster_params.top : 0,
@@ -211,11 +215,9 @@ function add_round_to_queue(classid, round, roster_params) {
                  n_times_per_lane: 1,
                  continue_racing: 1},
           success: function(data) {
-            var q = data.getElementsByTagName('queue-entry');
-            if (q) {
-              var entry = JSON.parse(q[0].textContent);
-              entry.round = parseInt(entry.round);
-              entry.seq = parseInt(entry.seq);
+            if (data.hasOwnProperty('queue-entry')) {
+              var entry = data['queue-entry'];
+              console.log(entry);
               g_queue.push(entry);
               append_playlist_entry_li(entry, g_all_scenes);
               maybe_change_playlist_message();
@@ -349,8 +351,6 @@ function build_rounds(queue, classes) {
   var highest_round = 0;  // Highest round overall
   $.each(queue, function(i, entry) {
     // entry = {classid, round}
-    entry.round = parseInt(entry.round);
-    entry.seq = parseInt(entry.seq);
     if (entry.round > highest_round) {
       highest_round = entry.round;
     }
@@ -363,8 +363,8 @@ function build_rounds(queue, classes) {
   // highest round overall
   $.each(g_all_rounds, function(classid, round_entries) {
     $.each(round_entries, function(i, round_entry) {
-      round_entry.round = parseInt(round_entry.round);
-      round_entry.heats_scheduled = parseInt(round_entry.heats_scheduled);
+      round_entry.round = round_entry.round;
+      round_entry.heats_scheduled = round_entry.heats_scheduled;
       if (round_entry.round > highest_round) {
         highest_round = round_entry.round;
       }
@@ -415,8 +415,8 @@ function build_rounds(queue, classes) {
                 }
               })
               .toggleClass('finished',
-                           round_entry
-                           ? (round_entry.heats_run >= round_entry.heats_scheduled) : false)
+                           round_entry != null && round_entry.heats_run > 0 &&
+                           round_entry.heats_run >= round_entry.heats_scheduled)
               .on('click', on_add_round_to_queue)
           );
         }

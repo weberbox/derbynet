@@ -1,13 +1,8 @@
 package org.jeffpiazza.derby;
 
-import java.io.File;
-import jssc.*;
-import org.jeffpiazza.derby.devices.TimerDevice;
-import org.jeffpiazza.derby.gui.TimerGui;
-
 import javax.swing.*;
+import org.jeffpiazza.derby.gui.TimerGui;
 import org.jeffpiazza.derby.devices.AllDeviceTypes;
-import org.jeffpiazza.derby.devices.RemoteStartInterface;
 import org.jeffpiazza.derby.devices.TimerTask;
 
 // Three threads for three "actors":
@@ -36,6 +31,17 @@ public class TimerMain {
   }
 
   public static void main(String[] args) {
+    String[] customArgs = Customizer.getCustomArgs();
+    if (customArgs != null) {
+      int consumed = Flag.parseCommandLineFlags(customArgs, 0);
+      if (consumed != customArgs.length) {
+        System.err.println("Only " + consumed + " customized args parse:");
+        for (String a : customArgs) {
+          System.err.println("  " + a);
+        }
+        System.exit(1);
+      }
+    }
     int consumed_args = Flag.parseCommandLineFlags(args, 0);
 
     if (Flag.version.value()) {
@@ -43,10 +49,9 @@ public class TimerMain {
       System.exit(0);
     }
 
-    String base_url = null;
+    String cmd_line_url = null;
     if (consumed_args < args.length && args[consumed_args].charAt(0) != '-') {
-      base_url = args[consumed_args];
-      ++consumed_args;
+      cmd_line_url = args[consumed_args++];
     }
 
     if (consumed_args < args.length) {
@@ -54,14 +59,34 @@ public class TimerMain {
       System.exit(1);
     }
 
+    makeLogWriter();
+
+    String base_url = Customizer.getCustomUrl();  // Likely null
+    if (base_url != null) {
+      LogWriter.info("Custom URL: " + base_url);
+    }
+    // A URL on the command line takes precedence over URL from the jar
+    if (cmd_line_url != null) {
+      base_url = cmd_line_url;
+      LogWriter.info("URL from the command line: " + base_url);
+    }
+
     if (Flag.headless.value()) {
       if (base_url == null && !Flag.simulate_host.value()) {
         usage();
+        System.err.println("**** URL is required for headless mode ****");
         System.exit(1);
       }
     }
 
-    makeLogWriter();
+    if (customArgs != null && customArgs.length > 0) {
+      LogWriter.info("===== Arguments From Jar ==============");
+      for (String arg : customArgs) {
+        LogWriter.info(arg);
+      }
+      LogWriter.info("=======================================");
+    }
+
     if (args.length > 0) {
       LogWriter.info("===== Command Line Arguments ==========");
       for (String arg : args) {
@@ -70,7 +95,14 @@ public class TimerMain {
       LogWriter.info("=======================================");
     }
 
-    ConnectorImpl connector = new ConnectorImpl(Flag.trace_messages.value());
+    Connector connector = new Connector();
+
+    new TriggerFileCallbacks(connector);
+    new ObsCallbacks(connector);
+
+    if (Flag.insecure.value()) {
+      HttpsSecurityDisabler.disableHttpsSecurity();
+    }
 
     SimulatedClientSession simulatedSession
         = Flag.simulate_host.value() ? new SimulatedClientSession() : null;
@@ -84,6 +116,8 @@ public class TimerMain {
               : simulatedSession;
         LogWriter.setClientSession(clientSession);
         HttpTask.start(clientSession, connector,
+                       Flag.username.value(),
+                       Flag.password.value(),
                        new HttpTask.LoginCallback() {
                      @Override
                      public void onLoginSuccess() {
@@ -97,6 +131,7 @@ public class TimerMain {
                      }
                    });
       }
+      connector.setTimerGui(timerGui);
 
       TimerTask timerTask = new TimerTask(Flag.portname.value(),
                                           Flag.devicename.value(), timerGui,
@@ -116,7 +151,7 @@ public class TimerMain {
     }
   }
 
-  private static TimerGui startTimerGui(ConnectorImpl connector,
+  private static TimerGui startTimerGui(Connector connector,
                                         String base_url,
                                         ClientSession simulatedSession) {
     final TimerGui timerGui = new TimerGui(connector);
@@ -125,173 +160,14 @@ public class TimerMain {
         timerGui.show();
       }
     });
+    timerGui.setRoleAndPassword(Flag.username.value(),
+                                Flag.password.value());
     if (base_url != null) {
       timerGui.setUrl(base_url);
     }
-    timerGui.setRoleAndPassword(Flag.username.value(),
-                                Flag.password.value());
     if (simulatedSession != null) {
       timerGui.setClientSession(simulatedSession);
     }
     return timerGui;
-  }
-
-  // Allow the timer device and web server connection to come up in either
-  // order, or perhaps not at all; when they're both established, wire together
-  // callbacks and send hello with lane count to web server.
-  public static class ConnectorImpl implements Connector {
-    private HttpTask httpTask;
-    private TimerTask timerTask;
-    private boolean traceMessages;
-
-    public ConnectorImpl(boolean traceMessages) {
-      this.traceMessages = traceMessages;
-    }
-
-    @Override
-    public synchronized void setHttpTask(HttpTask httpTask) {
-      this.httpTask = httpTask;
-      maybeWireTogether();
-    }
-
-    @Override
-    public synchronized void setTimerTask(TimerTask deviceTask) {
-      this.timerTask = deviceTask;
-      maybeWireTogether();
-    }
-
-    private void maybeWireTogether() {
-      if (httpTask != null && timerTask != null && timerTask.device() != null) {
-        wireTogether(httpTask, timerTask, traceMessages);
-        int nlanes = 0;
-        try {
-          nlanes = timerTask.device().getNumberOfLanes();
-        } catch (SerialPortException e) {
-          LogWriter.stacktrace(e);
-        }
-        httpTask.sendIdentified(
-            nlanes, timerTask.device().getClass().getSimpleName(),
-            timerTask.device().getTimerIdentifier(),
-            timerTask.device().hasEverSpoken());
-      }
-    }
-
-    // Registers callbacks that allow the httpTask and timer device to
-    // communicate asynchronously.
-    public static void wireTogether(final HttpTask httpTask,
-                                    final TimerTask timerTask,
-                                    final boolean traceMessages) {
-      if (traceMessages) {
-        StdoutMessageTrace.trace("Timer detected.");
-      }
-
-      httpTask.registerTimerHealthCallback(timerTask);
-
-      httpTask.registerHeatReadyCallback(new HttpTask.HeatReadyCallback() {
-        public void onHeatReady(int roundid, int heat, int laneMask) {
-          try {
-            if (traceMessages) {
-              StdoutMessageTrace.trace(
-                  "Heat ready: roundid=" + roundid + ", heat=" + heat);
-            }
-            timerTask.device().prepareHeat(roundid, heat, laneMask);
-          } catch (Throwable t) {
-            LogWriter.stacktrace(t);
-            httpTask.queueMessage(
-                new Message.Malfunction(false, "Can't ready timer."));
-          }
-        }
-      });
-
-      httpTask.registerAbortHeatCallback(new HttpTask.AbortHeatCallback() {
-        public void onAbortHeat() {
-          if (traceMessages) {
-            StdoutMessageTrace.trace("AbortHeat received");
-          }
-          try {
-            timerTask.device().abortHeat();
-          } catch (Throwable t) {
-            LogWriter.stacktrace(t);
-            t.printStackTrace();
-          }
-        }
-      });
-
-      httpTask.registerRemoteStart(new HttpTask.RemoteStartCallback() {
-        @Override
-        public boolean hasRemoteStart() {
-          if (timerTask.device() instanceof RemoteStartInterface) {
-            RemoteStartInterface rs = (RemoteStartInterface) timerTask.device();
-            return rs.hasRemoteStart();
-          }
-          return false;
-        }
-
-        @Override
-        public void remoteStart() {
-          if (timerTask.device() instanceof RemoteStartInterface) {
-            RemoteStartInterface rs = (RemoteStartInterface) timerTask.device();
-            try {
-              LogWriter.serial("Executing remote-start");
-              rs.remoteStart();
-            } catch (SerialPortException ex) {
-              LogWriter.stacktrace(ex);
-            }
-          } else {
-            LogWriter.serial("Unable to respond to remote-start");
-          }
-        }
-      });
-
-      timerTask.device().registerRaceStartedCallback(
-          new TimerDevice.RaceStartedCallback() {
-        public void raceStarted() {
-          if (Flag.trigger_file_directory.value != null) {
-            try {
-              (new File(new File(Flag.trigger_file_directory.value),
-                        "heat-started")).createNewFile();
-            } catch (Throwable t) {
-              LogWriter.info("Failed to create /tmp/heat-started: " + t.
-                  getMessage());
-            }
-          }
-          try {
-            httpTask.queueMessage(new Message.Started());
-          } catch (Throwable t) {
-          }
-        }
-      });
-
-      timerTask.device().registerRaceFinishedCallback(
-          new TimerDevice.RaceFinishedCallback() {
-        public void raceFinished(int roundid, int heat,
-                                 Message.LaneResult[] results) {
-          if (Flag.trigger_file_directory.value != null) {
-            try {
-              (new File(new File(Flag.trigger_file_directory.value),
-                        "heat-finished")).createNewFile();
-            } catch (Throwable t) {
-              LogWriter.info("Failed to create /tmp/heat-finished: " + t.
-                  getMessage());
-            }
-          }
-          // Rely on recipient to ignore if not expecting any results
-          try {
-            httpTask.queueMessage(new Message.Finished(roundid, heat, results));
-          } catch (Throwable t) {
-          }
-        }
-      });
-
-      timerTask.device().registerTimerMalfunctionCallback(
-          new TimerDevice.TimerMalfunctionCallback() {
-        public void malfunction(boolean detectable, String msg) {
-          try {
-            httpTask.queueMessage(new Message.Malfunction(detectable, msg));
-          } catch (Throwable t) {
-          }
-        }
-      });
-    }
   }
 }

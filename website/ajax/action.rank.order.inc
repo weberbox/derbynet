@@ -3,7 +3,7 @@
 // <n> is the sequential order, e.g. the value of $_POST['rankid_1'] is the rankid which
 // should have sortorder=1
 
-start_response();
+require_once('inc/divisions.inc');
 
 if (have_permission(SET_UP_PERMISSION)) {
   foreach ($_POST as $key => $val) {
@@ -13,10 +13,9 @@ if (have_permission(SET_UP_PERMISSION)) {
                            ':rankid' => $val));
     }
   }
-  echo "<success/>\n";
+  reorder_divisions();
+  json_success();
 } else {
-  echo "<failure code='permission'>Not authorized</failure>\n";
+  json_not_authorized();
 }
-
-end_response();
 ?>

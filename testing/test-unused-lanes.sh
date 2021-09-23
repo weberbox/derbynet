@@ -7,7 +7,7 @@ source `dirname $0`/common.sh
 user_login_coordinator
 
 # nlanes=6, to count physical lanes
-curl_post action.php "action=settings.write&n-lanes=6" | check_success
+curl_postj action.php "action=settings.write&n-lanes=6" | check_jsuccess
 
 ### Check in every other racer...
 `dirname $0`/test-basic-checkins.sh "$BASE_URL"
@@ -15,35 +15,45 @@ curl_post action.php "action=settings.write&n-lanes=6" | check_success
 
 # Make six lanes down to 4, 100001 = 33
 #  (Also confirm that max-runs-per-car=0, as opposed to unset, works as expected.)
-curl_post action.php "action=settings.write&unused-lane-mask=33&max-runs-per-car=0" | check_success
-curl_post action.php "action=schedule.generate&roundid=1" | check_success
-curl_post action.php "action=heat.select&roundid=1&now_racing=0" | check_success
-curl_get "action.php?query=poll.coordinator" | expect_count 'racer lane="[16]"' 0
-staged_heat6 - 101 121 141 111 -
-curl_post action.php "action=heat.select&heat=next" | check_success
-staged_heat6 - 111 131 101 121 -
-curl_post action.php "action=heat.select&heat=next" | check_success
-staged_heat6 - 121 141 111 131 -
-curl_post action.php "action=heat.select&heat=next" | check_success
-staged_heat6 - 131 101 121 141 -
-curl_post action.php "action=heat.select&heat=next" | check_success
-staged_heat6 - 141 111 131 101 -
+curl_postj action.php "action=settings.write&unused-lane-mask=33&max-runs-per-car=0" | check_jsuccess
+curl_postj action.php "action=schedule.generate&roundid=1" | check_jsuccess
+curl_postj action.php "action=heat.select&roundid=1&now_racing=0" | check_jsuccess
+curl_getj "action.php?query=poll.coordinator" | \
+    jq ".racers | map(select(.lane == 1 or .lane == 6)) | length" | \
+    expect_eq 0
+staged_heat6 0 101 121 141 111 0
+curl_postj action.php "action=heat.select&heat=next" | check_jsuccess
+staged_heat6 0 111 131 101 121 0
+curl_postj action.php "action=heat.select&heat=next" | check_jsuccess
+staged_heat6 0 121 141 111 131 0
+curl_postj action.php "action=heat.select&heat=next" | check_jsuccess
+staged_heat6 0 131 101 121 141 0
+curl_postj action.php "action=heat.select&heat=next" | check_jsuccess
+staged_heat6 0 141 111 131 101 0
 
 
 # Use every other lane, 101010 = 42
-curl_post action.php "action=settings.write&unused-lane-mask=42" | check_success
-curl_post action.php "action=schedule.generate&roundid=2" | check_success
-curl_post action.php "action=heat.select&roundid=2&now_racing=0" | check_success
-curl_get "action.php?query=poll.coordinator" | expect_count 'racer lane="[246]"' 0
-staged_heat6 207 - 227 - 247 -
-curl_post action.php "action=heat.select&heat=next" | check_success
-staged_heat6 217 - 237 - 207 -
-curl_post action.php "action=heat.select&heat=next" | check_success
-staged_heat6 227 - 247 - 217 -
-curl_post action.php "action=heat.select&heat=next" | check_success
-staged_heat6 237 - 207 - 227 -
-curl_post action.php "action=heat.select&heat=next" | check_success
-staged_heat6 247 - 217 - 237 -
+# Writing settings with unraced schedule will fail:
+curl_postj action.php "action=settings.write&unused-lane-mask=42" | check_jfailure
+# Previously we selected different heats but didn't race any of them, so the
+# schedule can just be removed.
+curl_postj action.php "action=schedule.unschedule&roundid=1" | check_jsuccess
+
+curl_postj action.php "action=settings.write&unused-lane-mask=42" | check_jsuccess
+curl_postj action.php "action=schedule.generate&roundid=2" | check_jsuccess
+curl_postj action.php "action=heat.select&roundid=2&now_racing=0" | check_jsuccess
+curl_getj "action.php?query=poll.coordinator" | \
+    jq ".racers | map(select(.lane == 2 or .lane == 4 or .lane == 6)) | length" | \
+    expect_eq 0
+staged_heat6 207 0 227 0 247 0
+curl_postj action.php "action=heat.select&heat=next" | check_jsuccess
+staged_heat6 217 0 237 0 207 0
+curl_postj action.php "action=heat.select&heat=next" | check_jsuccess
+staged_heat6 227 0 247 0 217 0
+curl_postj action.php "action=heat.select&heat=next" | check_jsuccess
+staged_heat6 237 0 207 0 227 0
+curl_postj action.php "action=heat.select&heat=next" | check_jsuccess
+staged_heat6 247 0 217 0 237 0
 
 
 

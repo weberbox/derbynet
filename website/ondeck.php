@@ -46,9 +46,20 @@ var g_update_status = {
       use_master_sched: <?php echo $use_master_sched ? 1 : 0; ?>,
       merge_rounds: <?php echo $use_master_sched ? 1 : 0; ?>,
 };
-// False if auto-scrolling should center the NEXT heat (the default), true if we
-// should scroll to focus on the current heat.
-var g_focus_current = <?php echo isset($_GET['focus_current']) ? "true" : "false"; ?>;
+// g_focus should be one of 'current', 'next', 'previous', or ''.  The default
+// is g_focus = '', which acts like 'next' but only if that row is visible.
+// (Allows user to scroll to a different row and not have to fight the
+// autoscrolling.)
+var g_focus = <?php
+    if (isset($_GET['focus'])) {
+      echo json_encode(empty($_GET['focus']) ? 'next' : $_GET['focus']);
+    } else if (isset($_GET['focus_current'])) {
+      // Legacy
+      echo '"current"';
+    } else {
+      echo '""';
+    }
+?>;
 </script>
 <script type="text/javascript" src="js/common-update.js"></script>
 <script type="text/javascript" src="js/ondeck-update.js"></script>
@@ -148,7 +159,7 @@ function maybe_mark_photos_populated($heat_row, $photo_in_heat) {
   return $heat_row;
 }
 
-$name_style = read_raceinfo('name-style', FULL_NAME);
+$name_style = read_name_style();
 
 $rs = $stmt->fetch(PDO::FETCH_ASSOC);
 foreach ($groups as $group) {

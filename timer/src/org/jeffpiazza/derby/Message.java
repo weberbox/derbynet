@@ -2,6 +2,9 @@ package org.jeffpiazza.derby;
 
 import java.io.*;
 import java.net.URLEncoder;
+import org.jeffpiazza.derby.devices.AllDeviceTypes;
+import org.jeffpiazza.derby.devices.TimerDevice;
+import org.jeffpiazza.derby.devices.TimerTask;
 
 // TODO: Heartbeat should supply whatever ancillary information
 // the timer supports (reset button pressed, lane blocked, etc.)
@@ -23,13 +26,15 @@ public interface Message {
   public static class Identified implements Message {
     private int nlanes;
     private String timer;
+    private String humanName;
     private String identifier;
     private boolean confirmed;
 
-    public Identified(int nlanes, String timer, String identifier,
-                      boolean confirmed) {
+    public Identified(int nlanes, String timer, String humanName,
+                      String identifier, boolean confirmed) {
       this.nlanes = nlanes;
       this.timer = timer;
+      this.humanName = humanName;
       this.identifier = identifier;
       this.confirmed = confirmed;
     }
@@ -41,6 +46,12 @@ public interface Message {
       sb.append("&lane_count=").append(nlanes);
       sb.append("&timer=").append(timer);
       sb.append("&confirmed=").append(confirmed ? "1" : "0");
+      if (humanName != null) {
+        try {
+          sb.append("&human=").append(URLEncoder.encode(humanName, "UTF-8"));
+        } catch (UnsupportedEncodingException ex) {
+        }
+      }
       if (identifier != null) {
         try {
           sb.append("&ident=").append(URLEncoder.encode(identifier, "UTF-8"));
@@ -62,6 +73,18 @@ public interface Message {
   public static class LaneResult {
     public String time;
     public int place;  // 0 if not known/stated
+
+    public LaneResult() {
+    }
+
+    public LaneResult(String time) {
+      this.time = time;
+    }
+
+    public LaneResult(String time, int place) {
+      this.time = time;
+      this.place = place;
+    }
   }
 
   public static class Finished implements Message {
@@ -84,6 +107,8 @@ public interface Message {
         if (results[i] != null) {
           String time = results[i].time;
           if (time == null) {
+            LogWriter.serial(
+                "Lane " + (i + 1) + ": substituting 9.9999 for missing time");
             time = "9.9999";
           }
           sb.append("&lane").append(i + 1).append("=").append(time);
@@ -118,14 +143,52 @@ public interface Message {
   }
 
   public static class Heartbeat implements Message {
-    private boolean confirmed;
+    private int health;
 
-    public Heartbeat(boolean confirmed) {
-      this.confirmed = confirmed;
+    public Heartbeat(int health) {
+      this.health = health;
     }
 
     public String asParameters() {
-      return "message=HEARTBEAT&confirmed=" + (confirmed ? 1 : 0);
+      return "message=HEARTBEAT&"
+          + (health == TimerTask.UNHEALTHY ? "unhealthy"
+             : health == TimerTask.HEALTHY ? "confirmed=1"
+               : "confirmed=0");
+    }
+  }
+
+  public static class Flags implements Message {
+    public String asParameters() {
+      StringBuilder sb = new StringBuilder("message=FLAGS");
+      try {
+        for (Flag flag : Flag.allFlags()) {
+          if (flag.is_settable()) {
+            sb.append("&flag-").append(flag.name()).append("=");
+            sb.append(flag.typeName()).append(":");
+            sb.append(URLEncoder.encode(flag.value() == null
+                                        ? "null" : flag.value().toString(),
+                                        "UTF-8"));
+            sb.append("&desc-").append(flag.name()).append("=");
+            sb.append(URLEncoder.encode("" + flag.description(), "UTF-8"));
+          }
+        }
+        sb.append("&ports=");
+        boolean first_port = true;
+        for (String port : AllSerialPorts.getNames()) {
+          sb.append(URLEncoder.encode((first_port ? "" : ",") + port, "UTF-8"));
+          first_port = false;
+        }
+        for (Class<? extends TimerDevice> devclass
+             : AllDeviceTypes.allTimerDeviceClasses()) {
+          sb.append("&device-").append(devclass.getSimpleName()).append("=");
+          sb.append(URLEncoder.encode(AllDeviceTypes.toHumanString(devclass),
+                                      "UTF-8"));
+        }
+      } catch (UnsupportedEncodingException ex) {  // Won't happen
+        return null;
+      }
+
+      return sb.toString();
     }
   }
 }

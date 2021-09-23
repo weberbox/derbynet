@@ -1,7 +1,8 @@
 // Whether or not to show confetti is a kiosk parameter.
-var g_confetti = false;
+// g_confetti defined in award-presentations.kiosk
 $(function() {
   KioskPoller.param_callback = function(parameters) {
+    console.log("Poller:");console.log(parameters);
     if (!parameters.hasOwnProperty('confetti')) {
       parameters.confetti = true;
     }
@@ -42,38 +43,20 @@ var AwardPoller = {
     setTimeout(function() { AwardPoller.query_for_current_award(); }, 500 /* ms. */);
   },
 
-  parse_award: function(data) {
-    var award_xml = data.getElementsByTagName('award')[0];
-    if (!award_xml) {
-      return false;
-    }
-    return {key: award_xml.getAttribute('key'),
-            reveal: award_xml.getAttribute('reveal') == 'true',
-            awardname: award_xml.getAttribute('awardname'),
-            carnumber: award_xml.getAttribute('carnumber'),
-            carname: award_xml.getAttribute('carname'),
-            firstname: award_xml.getAttribute('firstname'),
-            lastname: award_xml.getAttribute('lastname'),
-            subgroup: award_xml.getAttribute('subgroup'),
-            headphoto: award_xml.getAttribute('headphoto'),
-            carphoto: award_xml.getAttribute('carphoto')};
-  },
-
   process_current_award: function(data) {
-    var award = this.parse_award(data);
-    if (!award) {
+    if (!data.hasOwnProperty('current')) {
       $("#awardname").text("Award Presentation");
       $(".reveal").hide();
       return;
     }
 
+    var award = data.current;
     if (this.current_award_key != award.key) {
       $(".reveal").hide();
 
       $("#awardname").text(award.awardname);
       $("#carnumber").text(award.carnumber);
-      $("#firstname").text(award.firstname);
-      $("#lastname").text(award.lastname);
+      $("#recipient").text(award.recipient);
       if (award.carname && award.carname.length > 0) {
         $("#carname").text(award.carname);
         $("#carname").css('display', 'block');

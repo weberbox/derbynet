@@ -10,6 +10,7 @@ function all_classes() {
   $stmt = $db->prepare('SELECT Classes.classid, class, rankid, rank, '
                        .(schema_version() >= 3 ? 'ntrophies, ' : '-1 as ntrophies, ')
                        .(schema_version() >= 3 ? 'constituents, ' : '\'\' as constituents, ')
+                       .(schema_version() >= 5 ? 'rankids, ' : '\'\' as rankids, ')
                        .' (SELECT COUNT(*) FROM RegistrationInfo WHERE RegistrationInfo.classid = Classes.classid) AS nclass,'
                        .' (SELECT COUNT(*) FROM RegistrationInfo WHERE RegistrationInfo.rankid = Ranks.rankid) AS nrank,'
                        .' (SELECT COUNT(*) FROM Rounds'
@@ -32,6 +33,7 @@ function all_classes() {
                          'name' => $row['class'],
                          'ntrophies' => $row['ntrophies'],
                          'constituents' => $row['constituents'],
+                         'rankids' => $row['rankids'],
                          'count' => $row['nclass'],
                          'nrounds_with_results' => $row['nrounds'],
                          'ranks' => []);
@@ -64,8 +66,10 @@ function classes_and_ranks() {
   $rankseq = array();
   foreach ($db->query('SELECT Classes.classid, class, rankid, rank,'
                       .(schema_version() >= 3
-                        ? 'constituents, ntrophies'
-                        : '\'\' AS constituents, -1 AS ntrophies')
+                        ? 'constituents, ntrophies, '
+                        : '\'\' AS constituents, -1 AS ntrophies, ')
+                      .(schema_version() >= RANK_AGGREGATE_SCHEMA
+                        ? 'rankids' : '\'\' AS rankids')
                       .' FROM Classes'
                       .' LEFT JOIN Ranks ON Classes.classid = Ranks.classid'
                       .' ORDER BY '.(schema_version() >= 2
@@ -77,6 +81,8 @@ function classes_and_ranks() {
       $classes[$row['classid']] = array('class' => $row['class'],
                                         'constituents' => array_filter(explode(',', $row['constituents']),
                                                                        'strlen'),
+                                        'constituent-ranks' => array_filter(explode(',', $row['rankids']),
+                                                                            'strlen'),
                                         'ntrophies' => $row['ntrophies'],
                                         'seq' => count($classseq));
     }

@@ -2,8 +2,12 @@ package org.jeffpiazza.derby.serialport;
 
 import jssc.*;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Matcher;
+import org.jeffpiazza.derby.Flag;
 import org.jeffpiazza.derby.LogWriter;
 import org.jeffpiazza.derby.devices.TimerDevice;
+import org.jeffpiazza.derby.timer.ProfileDetector;
 
 // Usage:
 //
@@ -24,16 +28,21 @@ import org.jeffpiazza.derby.devices.TimerDevice;
 //
 public class SerialPortWrapper implements SerialPortEventListener {
   private SerialPort port;
+  // A sequence of end-of-line characters that should be written
+  // at the end of each write().
+  private String end_of_line = "";
   // Received characters that don't yet make up a complete line, i.e., still
   // waiting for a newline character.
   private String leftover;
+  // System time in millis when leftover was last added to.
+  private long last_char_received;
   // Messages (full lines) received from timer
   private ArrayList<String> queue;
   // System time in millis when we last sent a command to the serial port.
   // TODO What we really want is to track the last command for which we actually
   // expect a response.
   private long last_command;
-  // System time in millis when we last received a character from the serial
+  // System time in millis when we last received an event from the serial
   // port; used to detect lost contact.
   private long last_contact;
 
@@ -45,11 +54,38 @@ public class SerialPortWrapper implements SerialPortEventListener {
   public interface Detector {
     // Return that part of line not handled by this detector
     String apply(String line) throws SerialPortException;
+
+    public static String applyDetectors(String line, List<Detector> detectors)
+        throws SerialPortException {
+      line = line.trim();
+      if (detectors != null) {
+        boolean match_more = (line.length() > 0);
+        if (match_more) {
+          LogWriter.serialIn(line);
+        }
+        while (match_more) {
+          match_more = false;
+          for (Detector d : detectors) {
+            String s2 = d.apply(line);
+            if (line != s2) {  // Intentional pointer comparison
+              line = s2;
+              match_more = (line.length() > 0);
+              break;
+            }
+          }
+        }
+      }
+      return line;
+    }
   }
+
   private final ArrayList<Detector> detectors = new ArrayList<Detector>();
   // If there is one, the early detector gets applied repeatedly each time the
   // buffer changes, without waiting for a newline character.
   private Detector earlyDetector;
+
+  // Number of milliseconds before considering connection lost
+  private static final long LOST_CONTACT_THRESHOLD = 2000;
 
   public SerialPortWrapper(SerialPort port) throws
       SerialPortException {
@@ -71,11 +107,22 @@ public class SerialPortWrapper implements SerialPortEventListener {
   }
 
   // These xxxPortXxx methods are the only ones that interact directly with the
-  // SerialPort member.å
+  // SerialPort member.
   public boolean setPortParams(int baudRate, int dataBits, int stopBits,
                                int parity, boolean setRTS, boolean setDTR)
       throws SerialPortException {
     return port.setParams(baudRate, dataBits, stopBits, parity, setRTS, setDTR);
+  }
+
+  public boolean setPortParams(int baudRate, int dataBits, int stopBits,
+                               int parity) throws SerialPortException {
+    return setPortParams(baudRate, dataBits, stopBits, parity,
+                         !Flag.clear_rts_dtr.value(),
+                         !Flag.clear_rts_dtr.value());
+  }
+
+  public void setEndOfLine(String end_of_line) {
+    this.end_of_line = end_of_line;
   }
 
   public void closePort() throws SerialPortException {
@@ -95,6 +142,7 @@ public class SerialPortWrapper implements SerialPortEventListener {
     port.writeString(s);
   }
 
+  // TODO Are these thread-safe?  Do they need to be?
   public long millisSinceLastCommand() {
     return System.currentTimeMillis() - last_command;
   }
@@ -104,7 +152,7 @@ public class SerialPortWrapper implements SerialPortEventListener {
   }
 
   public void checkConnection() throws TimerDevice.LostConnectionException {
-    if (millisSinceLastContact() > 2000) {
+    if (millisSinceLastContact() > LOST_CONTACT_THRESHOLD) {
       throw new TimerDevice.LostConnectionException();
     }
   }
@@ -143,8 +191,8 @@ public class SerialPortWrapper implements SerialPortEventListener {
         // it comes up sometimes on Windows
         noticeContact();
       } else {
-        String msg = "\n(Unexpected serialEvent type: " +
-            event.getEventType() + " with value " + event.getEventValue() + ")";
+        String msg = "\n(Unexpected serialEvent type: "
+            + event.getEventType() + " with value " + event.getEventValue() + ")";
         LogWriter.info(msg);
         System.err.println(msg);
       }
@@ -169,35 +217,21 @@ public class SerialPortWrapper implements SerialPortEventListener {
         if (s == null || s.length() == 0) {
           break;
         }
-        s = leftover + s;
-        synchronized (detectors) {
-          if (earlyDetector != null) {
-            s = earlyDetector.apply(s);
-          }
-        }
-        int cr;
-        while ((cr = s.indexOf('\n')) >= 0) {
-          String line = s.substring(0, cr).trim();
-          if (line.length() > 0) {
-            LogWriter.serialIn(line);
-            synchronized (detectors) {
-              for (Detector detector : detectors) {
-                line = detector.apply(line);
-                if (line.length() == 0) {
-                  break;
-                }
-              }
+        synchronized (leftover) {
+          s = leftover + s;
+          synchronized (detectors) {
+            if (earlyDetector != null) {
+              s = earlyDetector.apply(s);
             }
           }
-          if (line.length() > 0) {
-            synchronized (queue) {
-              queue.add(line);
-            }
+          int cr;
+          while ((cr = s.indexOf('\n')) >= 0) {
+            enqueueLine(s.substring(0, cr));
+            s = s.substring(cr + 1);
           }
-
-          s = s.substring(cr + 1);
+          leftover = s;
+          last_char_received = System.currentTimeMillis();
         }
-        leftover = s;
       }
     } catch (Exception exc) {
       LogWriter.stacktrace(exc);
@@ -206,10 +240,35 @@ public class SerialPortWrapper implements SerialPortEventListener {
     }
   }
 
+  private String applyDetectors(String line) {
+    line = line.trim();
+    if (line.length() > 0) {
+      LogWriter.serialIn(line);
+      try {
+        line = Detector.applyDetectors(line, detectors);
+      } catch (SerialPortException exc) {
+        LogWriter.stacktrace(exc);
+        System.err.println("Exception while reading: " + exc);
+        exc.printStackTrace();
+        line = "";
+      }
+    }
+    return line;
+  }
+
+  private void enqueueLine(String line) {
+    line = applyDetectors(line);
+    if (line.length() > 0) {
+      synchronized (queue) {
+        queue.add(line);
+      }
+    }
+  }
+
   public void write(String s) throws SerialPortException {
     LogWriter.serialOut(s);
     last_command = System.currentTimeMillis();
-    writeStringToPort(s);
+    writeStringToPort(s + end_of_line);
   }
 
   // These are unsatisfactory, because it's not a certainty that
@@ -224,10 +283,6 @@ public class SerialPortWrapper implements SerialPortEventListener {
     clear();
     write(cmd);
     return next(System.currentTimeMillis() + timeout);
-  }
-
-  public String next() {
-    return next(System.currentTimeMillis() + 500);
   }
 
   public String next(long deadline) {
@@ -249,6 +304,19 @@ public class SerialPortWrapper implements SerialPortEventListener {
     synchronized (queue) {
       if (queue.size() > 0) {
         s = queue.remove(0);
+      }
+    }
+    if (s == null) {
+      synchronized (leftover) {
+        if (leftover.length() > 0 && Flag.newline_expected_ms.value() > 0
+            && System.currentTimeMillis() - last_char_received
+            > Flag.newline_expected_ms.value()) {
+          s = applyDetectors(leftover);
+          leftover = "";
+          if (s.length() == 0) {
+            s = null;
+          }
+        }
       }
     }
     if (s != null && s.length() > 0 && s.charAt(0) == '@') {
@@ -273,10 +341,12 @@ public class SerialPortWrapper implements SerialPortEventListener {
     while (System.currentTimeMillis() < deadline) {
       synchronized (queue) {
         if (queue.size() >= expectedLines) {
-          for (String s : queue) {
-            LogWriter.serial("DRAINED: " + s);
+          if (Flag.mark_ignored_timer_responses.value()) {
+            for (String s : queue) {
+              LogWriter.serial("DRAINED: " + s);
+            }
           }
-          queue.clear();
+          queue.subList(0, expectedLines).clear();
           return;
         }
       }

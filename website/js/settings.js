@@ -19,6 +19,9 @@ function on_lane_count_change() {
 }
 
 function on_lane_click(event) {
+  if ($("#unused-lane-mask").prop('disabled')) {
+    return;
+  }
   var mask = $("#unused-lane-mask").val();
   var target = $(event.currentTarget);
   var bit = target.attr('data-bit');
@@ -29,39 +32,44 @@ function on_lane_click(event) {
   PostSettingChange($("#unused-lane-mask"));
 }
 
+function on_linger_time_change() {
+  $("#now-racing-linger-ms").val($("#now-racing-linger-sec").val() * 1000);
+  PostSettingChange($("#now-racing-linger-ms"));
+  return false;
+}
+
 function on_max_runs_change() {
   $("#max-runs-per-car").val(document.getElementById('max-runs').checked ? 1 : 0);
   PostSettingChange($("#max-runs-per-car"));
 }
 
 function render_directory_status_icon(photo_dir_selector) {
-    $.ajax('action.php',
-           {type: 'GET',
-            data: {query: 'file.stat',
-                   path: $(photo_dir_selector).val()},
-            success: function(data) {
-                var icon_span = $(photo_dir_selector + '_icon');
-                var msg_para = $(photo_dir_selector + '_message');
-                var path = data.getElementsByTagName("path");
-                if (path.length > 0) {
-                    path = path[0];
-                    if (path.getAttribute("directory") == "0" ||
-                        path.getAttribute("readable") == "0") {
-                        icon_span.html('<img src="img/status/trouble.png"/>');
-                        msg_para.text('Directory does not exist or is not readable.');
-                    } else if (path.getAttribute("writable") == "0") {
-                        icon_span.html('<img src="img/status/readonly.png"/>');
-                        msg_para.text('Directory is not writable.');
-                    } else {
-                        icon_span.html('<img src="img/status/ok.png"/>');
-                        msg_para.text('');
-                    }
-                } else {
-                    icon_span.html("");
-                    msg_para.text('');
-                }
+  $.ajax('action.php',
+         {type: 'GET',
+          data: {query: 'file.stat',
+                 path: $(photo_dir_selector).val()},
+          success: function(data) {
+            console.log(data);
+            var icon_span = $(photo_dir_selector + '_icon');
+            var msg_para = $(photo_dir_selector + '_message');
+            if (data.hasOwnProperty('stat')) {
+              var stat = data.stat;
+              if (!stat.isdir || !stat.readable) {
+                icon_span.html('<img src="img/status/trouble.png"/>');
+                msg_para.text('Directory does not exist or is not readable.');
+              } else if (!stat.writable) {
+                icon_span.html('<img src="img/status/readonly.png"/>');
+                msg_para.text('Directory is not writable.');
+              } else {
+                icon_span.html('<img src="img/status/ok.png"/>');
+                msg_para.text('');
+              }
+            } else {
+              icon_span.html("");
+              msg_para.text('');
             }
-           });
+          }
+         });
 }
 
 function browse_for_photo_directory(photo_dir_selector) {
@@ -106,10 +114,9 @@ var PostSettingChange;
                {type: 'POST',
                 data: d,
                 success: function(data) {
-                  var fail = data.documentElement.getElementsByTagName("failure");
-                  if (fail && fail.length > 0) {
+                  if (data.outcome.summary == 'failure') {
                     console.log(data);
-                    alert("Action failed: " + fail[0].textContent);
+                    alert("Action failed: " + data.outcome.description);
                   }
                 },
                 error: function(jqXHR, ajaxSettings, thrownError) {
@@ -121,6 +128,9 @@ var PostSettingChange;
   }
 
   PostSettingChange = function(input) {
+    if ($(input).hasClass('do-not-post')) {
+      return;
+    }
     var name = input.attr('name');
     if (typeof name == 'undefined' || name === false) {
       return;
@@ -147,11 +157,13 @@ $(function() {
   $("#n-lanes").on("keyup mouseup", on_lane_count_change);
   on_lane_count_change();
 
+  $("#now-racing-linger-sec").on("keyup mouseup", on_linger_time_change);
+
   $("#supergroup-label").on("keyup mouseup", on_label_change);
   $("#group-label").on("keyup mouseup", on_label_change);
   $("#subgroup-label").on("keyup mouseup", on_label_change);
 
-  $('#settings_form input').on('change', function(e) {
+  $('#settings_form input, #settings_form select').on('change', function(e) {
     PostSettingChange($(this));
   });
   $('#settings_form input[type!="checkbox"]').on('input', function(e) {

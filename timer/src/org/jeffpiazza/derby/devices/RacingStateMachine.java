@@ -82,8 +82,7 @@ public class RacingStateMachine {
 
   // Reads the current state.  May advance RUNNING to RESULTS_OVERDUE state
   // if we've been waiting too long.
-  public synchronized State state()
-      throws SerialPortException {
+  public synchronized State state() throws SerialPortException {
     if (currentState == State.RUNNING && maxRunningTimeLimit > 0
         && System.currentTimeMillis() > stateEnteredMillis + maxRunningTimeLimit) {
       currentState = State.RESULTS_OVERDUE;

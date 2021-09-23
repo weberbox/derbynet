@@ -7,9 +7,13 @@ require_once('inc/locked.inc');
 require_once('inc/default-database-directory.inc');
 require_once('inc/name-mangler.inc');
 require_once('inc/photos-on-now-racing.inc');
+require_once('inc/pick_image_set.inc');
 require_once('inc/xbs.inc');
 
 require_permission(SET_UP_PERMISSION);
+
+$schedules_exist = read_single_value('SELECT COUNT(*) FROM RaceChart'
+                                     .' WHERE COALESCE(completed, \'\') = \'\'');
 ?><!DOCTYPE html>
 <html>
 <head>
@@ -19,6 +23,29 @@ require_permission(SET_UP_PERMISSION);
 <link rel="stylesheet" type="text/css" href="css/mobile.css"/>
 <link rel="stylesheet" type="text/css" href="css/chooser.css"/>
 <link rel="stylesheet" type="text/css" href="css/settings.css"/>
+<?php if ($schedules_exist) { ?>
+<style type="text/css">
+ .track-settings {
+    border-left: 30px solid red;
+    padding-left: 30px;
+    border-top: 5px solid red;
+    border-bottom: 5px solid red;
+ }
+
+.settings_group .track-settings .warning {
+   display: block;
+   visibility: visible;
+   width: 100px;
+   padding: 11px;
+   /* margin-top: 0px; */
+   margin-right: 0px;
+   float: right;
+   font-size: 18px;
+   font-weight: bold;
+   background-color: red;
+}
+</style>
+<?php } ?>
 <script type="text/javascript" src="js/jquery.js"></script>
 <script type="text/javascript" src="js/ajax-setup.js"></script>
 <script type="text/javascript" src="js/mobile.js"></script>
@@ -49,8 +76,6 @@ function photo_directory_base() {
 <?php
 make_banner('Settings', 'setup.php');
 
-$experimental_settings = isset($_GET['experimental']);
-
 $use_subgroups = use_subgroups();
 $use_xbs = read_raceinfo_boolean('use-xbs');
 $xbs_award = read_raceinfo('xbs-award', 'Exclusively By Scout');
@@ -62,7 +87,7 @@ $show_car_photos_on_deck = read_raceinfo_boolean('show-cars-on-deck');
 $show_racer_photos_rr = read_raceinfo_boolean('show-racer-photos-rr');
 $show_car_photos_rr = read_raceinfo_boolean('show-car-photos-rr');
 $locked_settings = locked_settings();
-$name_style = read_raceinfo('name-style', FULL_NAME);
+$name_style = read_name_style();
 $finish_formatting = get_finishtime_formatting_string();
 if (read_raceinfo('drop-slowest') && read_raceinfo('scoring', -1) == -1) {
   write_raceinfo('scoring', 1);
@@ -85,20 +110,28 @@ $scoring = read_raceinfo('scoring', 0);
         <label title="Enable this if you plan to enter times manually or use with GPRM. It will remove the warning from the 'now racing' dashboard regarding the timer not being connected.">
                Warn when timer not connected</label>
       </p>
+      <div class="track-settings">
+        <p class="warning hidden">Racing schedules already exist.</p>
+        <p>
+          <input id="n-lanes" name="n-lanes" type="number" min="0" max="20"
+                 class="not-mobile" <?php if ($schedules_exist) echo 'disabled="disabled"'; ?>
+                 value="<?php echo get_lane_count(); ?>"/>
+          <label for="n-lanes">Number of lanes on the track.</label>
+        </p>
+        <p>
+          <input type="hidden" id="unused-lane-mask" name="unused-lane-mask"
+                <?php if ($schedules_exist) echo 'disabled="disabled"'; ?>
+                value="<?php echo read_raceinfo('unused-lane-mask', 0); ?>"/>
+          Lanes available for scheduling:</p>
+        <p>
+          <span id="lanes-in-use"></span>
+        </p>
+      </div>
       <p>
-        <input id="n-lanes" name="n-lanes" type="number" min="0" max="20"
-               class="not-mobile"
-               value="<?php echo get_lane_count(); ?>"/>
-        <label for="n-lanes">Number of lanes on the track.</label>
+        <input id="reverse-lanes" name="reverse-lanes" class="not-mobile"
+               type="checkbox"<?php if (read_raceinfo_boolean('reverse-lanes')) echo ' checked="checked"';?>/>
+        <label for="reverse-lanes">Number lanes in reverse</label>
       </p>
-<p>
-    <input type="hidden" id="unused-lane-mask" name="unused-lane-mask"
-           value="<?php echo read_raceinfo('unused-lane-mask', 0); ?>"/>
-Lanes available for scheduling:</p>
-<p>
-<span id="lanes-in-use">
-</span>
-</p>
       <p>
         <input id="track-length" name="track-length" type="number" min="0" max="999"
                class="not-mobile"
@@ -115,13 +148,14 @@ Lanes available for scheduling:</p>
         echo $finish_formatting == "%6.4f" ? ' checked="checked"' : '';
         ?>/><label for="finish-formatting-4">5 digits (0.0001)</label>
       </p>
-    <?php if ($experimental_settings) { ?>
       <p>
-         <label for="now-racing-linger-ms">Linger time on last heat (ms.)</label>
-         <input type="number" id="now-racing-linger-ms" name="now-racing-linger-ms"
-                value="<?php echo read_raceinfo('now-racing-linger-ms', 10000); ?>"/>
+      <label for="now-racing-linger-sec">Previous heat linger time (sec.) for "Now Racing"</label>
+         <input type="hidden" id="now-racing-linger-ms" name="now-racing-linger-ms"
+           value="<?php echo read_raceinfo('now-racing-linger-ms', 10000); ?>"/>
+         <input type="number" id="now-racing-linger-sec" name="now-racing-linger-sec"
+                value="<?php echo sprintf("%0.1f", read_raceinfo('now-racing-linger-ms', 10000) / 1000); ?>"
+           step="0.1" class="do-not-post not-mobile" style="width: 100px;"/>
       </p>
-    <?php } ?>
     </div>
   </div>
 
@@ -130,34 +164,6 @@ Lanes available for scheduling:</p>
       <img src="img/settings-groups.png"/>
     </div>
     <div class="settings_group_settings">
-      <p>Use Image Set:<br/>
-        <?php
-            $current = read_raceinfo('images-dir', 'Generic');
-            $image_directories = @scandir(image_base_dir());
-            if ($image_directories !== false) {
-              usort($image_directories,
-                    function($a, $b) {
-                      if ($a == 'Generic') return -1;
-                      if ($b == 'Generic') return 1;
-                      if ($a < $b) return -1;
-                      if ($a > $b) return 1;
-                      return 0; });
-              $i = 0;
-              foreach ($image_directories as $img_dir) {
-                if ($img_dir[0] == '.') continue;
-                echo "<input type='radio' name='images-dir' class='not-mobile'";
-                echo " value='".htmlspecialchars($img_dir, ENT_QUOTES, 'UTF-8')."'";
-                if ($img_dir == $current) {
-                  echo " checked='checked'";
-                }
-                echo " id='images-dir-$i'/>\n";
-                echo "<label for='images-dir-$i'>".htmlspecialchars($img_dir, ENT_QUOTES, 'UTF-8')."</label>\n";
-                ++$i;
-              }
-            }
-        ?>
-      </p>
-
       <p>
         <input id="supergroup-label" name="supergroup-label" type="text" class="not-mobile"
                value="<?php echo supergroup_label(); ?>"/>
@@ -187,6 +193,7 @@ Lanes available for scheduling:</p>
         echo $name_style == FIRST_NAME_LAST_INITIAL ? ' checked="checked"' : '';
         ?>/><label for="name-style-1">First name and last initial</label>
       </p>
+
     </div>
   </div>
 
@@ -259,7 +266,12 @@ function photo_settings($purpose, $photo_dir_id, $photo_dir_value) {
       <img src="img/settings-photos.png"/>
     </div>
 
+
     <div class="settings_group_settings">
+      <p id='images-dir-p'>
+        <label for='images-dir'>Image set:</label>
+        <?php emit_images_dir_select("id='images-dir' name='images-dir'"); ?>
+      </p>
       <p><b>Now Racing</b> display:<br/>&nbsp;&nbsp;
         <input type="radio" name="photos-on-now-racing" value="0"
                     id="now-racing-photos-0" class="not-mobile"<?php

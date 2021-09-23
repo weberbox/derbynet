@@ -9,10 +9,8 @@ require_once('inc/timer-state.inc');
 require_once('inc/last-heat.inc');
 require_once('inc/scenes.inc');
 
-start_response();
-
 if (!have_permission(CONTROL_RACE_PERMISSION)) {
-  not_authorized_body();
+  json_not_authorized();
 } else {
   $ok = true;
 
@@ -44,12 +42,9 @@ if (!have_permission(CONTROL_RACE_PERMISSION)) {
 
     capture_last_heat_results($roundid, $heat);
 
-    $resultid = read_single_value('SELECT resultid FROM RaceChart'
-                                  .' WHERE roundid = :roundid'
-                                  .' AND heat = :heat',
-                                  array(':roundid' => $roundid,
-                                        ':heat' => $heat));
-    record_event_for_discarded_result($resultid);
+    record_event_for_discarded_heat('WHERE roundid = :roundid AND heat = :heat',
+                                    array(':roundid' => $roundid,
+                                          ':heat' => $heat));
 
     $stmt = $db->prepare('UPDATE RaceChart'
                          .' SET finishtime = NULL, finishplace = NULL, completed = NULL'
@@ -70,15 +65,13 @@ if (!have_permission(CONTROL_RACE_PERMISSION)) {
       }
     }
   } else {
-    echo "<failure code='nosuchheat'>No such heat</failure>\n";
+    json_failure('nosuchheat', 'No such heat');
   }
 
   if ($ok) {
-    echo "<success/>\n";
+    json_success();
   }
 }
 
 require('ajax/query.poll.coordinator.inc');
-
-end_response();
 ?>

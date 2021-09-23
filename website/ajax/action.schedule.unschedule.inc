@@ -7,10 +7,10 @@ require_once('inc/data.inc');
 require_once('inc/masterheat.inc');
 $now_running = get_running_round();  // now-racing, classid, roundid, round
 require_once('inc/racing-state.inc');
-
-start_response();
+require_once('inc/events.inc');
 
 if (have_permission(CONTROL_RACE_PERMISSION)) {
+  record_event_delete_schedule($roundid, '');
   $stmt = $db->prepare('DELETE FROM RaceChart WHERE roundid = :roundid');
   $stmt->execute(array(':roundid' => $roundid));
 
@@ -21,13 +21,9 @@ if (have_permission(CONTROL_RACE_PERMISSION)) {
     write_raceinfo('Heat', -1);
   }
   
-  echo "<success/>\n";
+  json_success();
   require('ajax/query.poll.coordinator.inc');
 } else {
-  not_authorized_body();
+  json_not_authorized();
 }
-
-end_response();
 ?>
-
-  

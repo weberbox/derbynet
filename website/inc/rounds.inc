@@ -56,6 +56,7 @@ function all_rounds_with_counts($by_class = true) {
   $use_groups = use_groups();
   $stmt = $db->query('SELECT roundid, roundid AS groupid, round,'
                      .' Classes.classid, class,'
+                     .' constituents > \'\' AS aggregate,'
                      .($use_groups ? " class || ', ' ||" : "")
                      .' \'Round \' || round AS roundname,'
                       .' (SELECT COUNT(*) FROM Roster'
@@ -178,12 +179,6 @@ function schedule_signature() {
   }
 
   return $result;
-}
-
-function write_signatures() {
-  foreach (schedule_signature() as $roundid => $signature) {
-    echo "<round roundid='".$roundid."'>".$signature."</round>\n";
-  }
 }
 
 ?>

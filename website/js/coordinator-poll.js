@@ -3,16 +3,16 @@
 // Data structure describing each round:
 //
 // round = { roundid:
-//           classname:
-//           roundname:
+//           class:
+//           name:
 //           round: (number)
-//           roster_size, racers_passed, racers_unscheduled, racers_scheduled,
+//           roster_size, passed, unscheduled
 //           heats_scheduled, heats_run
 //           category: one of ("now-racing", "master-schedule",
 //                             "ready-to-race", "not-yet-scheduled",
 //                             "done-racing",)
 //         }
-// (racers_passed = racers_scheduled + racers_unscheduled)
+// (racers_scheduled = passed - unscheduled)
 // (master-schedule is applied to a synthesized 'totals' round.)
 // (now-racing category is applied to the currently-running round.)
 //
@@ -89,140 +89,32 @@ g_new_round_modal_open = false;
 // button, this array is used to populate both the choose_new_round_modal and
 // the new_round_modal dialogs.
 // Each entry is:
-//    {classid, classname, round, roundid, roundname, aggregate, category, subgroups,
-//     heats_run,heats_scheduled,racers_passed,racers_scheduled,racers_unscheduled,roster_size}
+//    {classid, class, round, roundid, name, aggregate, category, subgroups,
+//     heats_run,heats_scheduled,passed,racers_scheduled,racers_unscheduled,roster_size}
 g_completed_rounds = [];
 
 // Roundids of an aggregate rounds
 g_aggregate_rounds = [];
 
-// Parsing for poll.coordinator output
-
-/* <current-heat now-racing= use-master-sched= use-points=
-                 classid= roundid= round= group= heat= /> */
-function parse_current_heat(data) {
-  var current_xml = data.getElementsByTagName("current-heat")[0];
-  if (!current_xml) {
-    return false;
-  }
-
-  // NOTE: heats_scheduled gets written in process_coordinator_poll_response
-  var current = {roundid: current_xml.getAttribute('roundid'),
-                 heat: current_xml.getAttribute('heat'),
-                 is_racing: current_xml.getAttribute('now-racing') == '1',
-                 master_schedule: current_xml.getAttribute('use-master-sched') == '1',
-                 use_points: current_xml.getAttribute('use-points') == '1',
-                 heat_results: []};
-
-  var heat_results = data.getElementsByTagName('heat-result');
-  for (var i = 0; i < heat_results.length; ++i) {
-    current.heat_results.push({lane: heat_results[i].getAttribute('lane'),
-                               time: heat_results[i].getAttribute('time'),
-                               place: heat_results[i].getAttribute('place')});
-  }
-  
-  return current;
-}
-
-function parse_rounds(data) {
-    var rounds_xml = data.getElementsByTagName("round");
-    var rounds = new Array(rounds_xml.length);
-    for (var i = 0; i < rounds_xml.length; ++i) {
-        var round_xml = rounds_xml[i];
-        rounds[i] = {roundid: 1*round_xml.getAttribute('roundid'),
-                     classid: 1*round_xml.getAttribute('classid'),
-                     classname: round_xml.getAttribute('class'),
-                     roundname: round_xml.textContent,
-                     aggregate: round_xml.hasAttribute('aggregate'),
-                     round: 1*round_xml.getAttribute('round'),
-                     roster_size: 1*round_xml.getAttribute('roster_size'),
-                     racers_passed: 1*round_xml.getAttribute('passed'),
-                     racers_unscheduled: 1*round_xml.getAttribute('unscheduled'),
-                     racers_scheduled: round_xml.getAttribute('passed') - round_xml.getAttribute('unscheduled'),
-                     heats_scheduled: 1*round_xml.getAttribute('heats_scheduled'),
-                     heats_run: 1*round_xml.getAttribute('heats_run'),
-                     next: round_xml.hasAttribute('next_round'),
-                     category: 'unassigned'};
-        rounds[i].category = 
-          // May get changed to now-racing for the current round
-          rounds[i].heats_scheduled > rounds[i].heats_run ? 'ready-to-race' :
-          rounds[i].heats_run > 0 ? 'done-racing' : 'not-yet-scheduled';
+function find_by_classid(classes, classid) {
+  for (var i = 0; i < classes.length; ++i) {
+    if (classes[i].classid == classid) {
+      return classes[i];
     }
-    return rounds;
-}
-
-function parse_timer_state(data) {
-    var tstate_xml = data.getElementsByTagName("timer-state")[0];
-    if (tstate_xml) {
-        return {status: tstate_xml.textContent,
-                icon: tstate_xml.getAttribute('icon'),
-                lanes: tstate_xml.getAttribute('lanes'),
-                remote_start: tstate_xml.getAttribute('remote_start')};
-    }
-}
-
-function parse_replay_state(data) {
-    var replay_state_xml = data.getElementsByTagName("replay-state")[0];
-    return {status: replay_state_xml.textContent,
-            icon: replay_state_xml.getAttribute('icon'),
-            connected: replay_state_xml.getAttribute('connected')};
-}
-
-function parse_racers(data) {
-    var racers_xml = data.getElementsByTagName("racer");
-    var racers = new Array(racers_xml.length);
-    for (var i = 0; i < racers_xml.length; ++i) {
-        racers[i] = {lane: racers_xml[i].getAttribute("lane"),
-                     name: racers_xml[i].getAttribute("name"),
-                     carnumber: racers_xml[i].getAttribute("carnumber"),
-                     finishtime: racers_xml[i].getAttribute("finishtime"),
-                     finishplace: racers_xml[i].getAttribute("finishplace")};
-    }
-    return racers;
-}
-
-function parse_ready_aggregate_classes(data) {
-  ready_aggregate_classes = [];
-  var elts = data.getElementsByTagName("ready-aggregate");
-  for (var i = 0; i < elts.length; ++i) {
-    ready_aggregate_classes[i] =
-      {classid: elts[i].getAttribute("classid"),
-       classname: elts[i].textContent};
   }
-  return ready_aggregate_classes;
 }
 
-// <class classid="4" count="16" nrounds="1" ntrophies="-1" name="Webelos (&quot;Webes">
-//    <rank rankid="4" count="16" name="Webelos (&quot;Webes"/>
-function parse_classes(data) {
-  var elts = data.getElementsByTagName("class");
-  var classes = {};
-  for (var i = 0; i < elts.length; ++i) {
-    var rank_elts = elts[i].getElementsByTagName("rank");
-    var ranks = new Array(rank_elts.length);
-    for (var ri = 0; ri < rank_elts.length; ++ri) {
-      ranks[ri] = {rankid: rank_elts[ri].getAttribute('rankid'),
-                   name: rank_elts[ri].getAttribute('name')};
-    }
-    classes[elts[i].getAttribute('classid')] = {
-                  name: elts[i].getAttribute('name'),
-                  subgroups: ranks};
-  }
-  return classes;
-}
-
-function update_for_last_heat(data, racers) {
-  var last_heat = data.getElementsByTagName("last_heat");
+function update_for_last_heat(json) {
+  var rerun_type = json['last-heat'];
   var button = $("#rerun-button");
-  var rerun_type = last_heat.length == 0 ? 'none' : last_heat[0].getAttribute("type");
   var enable = true;
   button.prop("data-rerun", rerun_type);
   if (rerun_type == 'recoverable') {
     button.val("Reinstate Heat");
   } else {
     var results = false;
-    for (var i = 0; i < racers.length; ++i) {
-      if (racers[i]['finishtime'] || racers[i]['finishplace']) {
+    for (var i = 0; i < json.racers.length; ++i) {
+      if (json.racers[i]['finishtime'] || json.racers[i]['finishplace'] > 0) {
         results = true;
       }
     }
@@ -244,8 +136,8 @@ function update_for_last_heat(data, racers) {
 
 function update_for_current_round(current) {
     var isracing_checkbox = $("#is-currently-racing");
-    if (isracing_checkbox.prop('checked') != current.is_racing) {
-        isracing_checkbox.prop('checked', current.is_racing);
+    if (isracing_checkbox.prop('checked') != current['now_racing']) {
+        isracing_checkbox.prop('checked', current['now_racing']);
         g_updating_current_round = true;
         try {
             isracing_checkbox.trigger("change", true);
@@ -279,10 +171,10 @@ function inject_progress_bars(control_group, round) {
         // bar2 (yellow) = passed
         // bar1 (blue) = scheduled
         // Trouble here will be scheduled-but-no-longer-passed, i.e., scheduled > passed
-        var passed = Math.max(round.racers_passed, round.racers_scheduled);
+      var passed = round.passed;
         control_group.find(".racers .bar2").width((100 * passed / round.roster_size) + '%');
         if (passed > 0) {
-            control_group.find(".racers .bar1").width((100 * round.racers_scheduled / passed) + '%');
+          control_group.find(".racers .bar1").width((100 * (round.passed - round.unscheduled) / passed) + '%');
         }
     }
 
@@ -294,8 +186,8 @@ function inject_progress_bars(control_group, round) {
 // Injects new progress values into the progress text
 function inject_progress_text(control_group, round) {
     control_group.find("[data-name=roster_size]").text(round.roster_size);
-    control_group.find("[data-name=n_passed]").text(round.racers_passed);
-    control_group.find("[data-name=scheduled]").text(round.racers_scheduled);
+    control_group.find("[data-name=n_passed]").text(round.passed);
+    control_group.find("[data-name=scheduled]").text(round.passed - round.unscheduled);
     control_group.find("[data-name=n_heats_scheduled]").text(round.heats_scheduled);
     control_group.find("[data-name=n_heats_run]").text(round.heats_run);
 }
@@ -309,9 +201,9 @@ function inject_progress_text(control_group, round) {
 //   div.collapsible[data-name='buttons']
 //
 // round = { roundid:
-//           classname:
+//           class:
 //           round: (number)
-//           roster_size, racers_passed, racers_scheduled, heats_scheduled, heats_run
+//           roster_size, passed, racers_scheduled, heats_scheduled, heats_run
 //           category: ("master-schedule", "ready-to-race", "not-yet-scheduled", "done-racing")
 //         }
 // current = { roundid: }
@@ -339,7 +231,7 @@ function generate_scheduling_control_group(round, current, timer_state) {
       .attr('data-roundid', round.roundid)
       .appendTo("#" + round.category + "-group")
       .append($("<h3 class=\"roundclass\"></h3>")
-              .text(round.roundname)
+              .text(round.name)
               .prepend("<img data-name=\"triangle\" src=\"img/triangle_east.png\"/>"))
       .append($('<div class="collapsible"/>')
               .append('<p>'
@@ -352,7 +244,7 @@ function generate_scheduling_control_group(round, current, timer_state) {
                       + '<span data-name="n_heats_scheduled"></span> heats scheduled, '
                       + '<span data-name="n_heats_run"></span> run.'
                       + '</p>'))
-      .append('<div class="racers progress">'
+      .append('<div class="racers heats progress">'
               + (show_checkins
                  ? "<div class='bar2'>"
                  + "<div class='bar1'></div>"
@@ -365,7 +257,7 @@ function generate_scheduling_control_group(round, current, timer_state) {
               + '</div>')
       .append($("<div data-name=\"buttons\" class=\"block_buttons collapsible\"/>"));
 
-  if (round.next) {
+  if (round['next-round']) {
     control_group.find('h3.roundclass').append('<div class="next_tag">NEXT</div>');
   }
 
@@ -392,7 +284,7 @@ function generate_current_round_control_group(round, current, timer_state) {
       .attr('data-roundid', round.roundid)
       .appendTo("#now-racing-group")
       .append($("<h3 class=\"roundclass\"></h3>")
-              .text(round.roundname))
+              .text(round.name))
       .append($("<div class='heat-text'/>")
               .append($('<p>'
                         + '<span data-name="n_heats_scheduled"></span> heats scheduled, '
@@ -426,10 +318,10 @@ function inject_into_scheduling_control_group(round, current, timer_state) {
     if (round.heats_scheduled > 0 && round.heats_run == 0) {
       buttons.append('<input type="button"'
                      + ' onclick="handle_unschedule_button(' + round.roundid
-                     + ', \'' + round.classname.replace(/"/g, '&quot;').replace(/'/, "\\'") + '\', '
+                     + ', \'' + round['class'].replace(/"/g, '&quot;').replace(/'/, "\\'") + '\', '
                      + round.round + ')"'
                      + ' value="Unschedule"/>');
-    } else if (round.racers_unscheduled > 0) {
+    } else if (round.unscheduled > 0) {
       if (round.heats_run == 0) {
         if (timer_state.lanes != '' && timer_state.lanes > 0) {
           buttons.append('<input type="button"'
@@ -451,7 +343,7 @@ function inject_into_scheduling_control_group(round, current, timer_state) {
         (round.round > 1 || round.aggregate)) {
       buttons.append('<input type="button"'
                      + ' onclick="handle_delete_round_button(' + round.roundid
-                     + ', \'' + round.classname.replace(/"/g, '&quot;').replace(/'/, "\\'") + '\', '
+                     + ', \'' + round['class'].replace(/"/g, '&quot;').replace(/'/, "\\'") + '\', '
                      + round.round + ')"'
                      + ' value="Delete Round"/>');
     }
@@ -580,7 +472,7 @@ function calculate_totals(rounds) {
   }
   
   var total_roster_size = 0;
-  var total_racers_passed = 0;
+  var total_passed = 0;
   var total_racers_scheduled = 0;
   var total_heats_scheduled = 0;
   var total_heats_run = 0;
@@ -588,16 +480,16 @@ function calculate_totals(rounds) {
     var round = rounds[i];
     if (round.round == max_round) {
       total_roster_size += round.roster_size;
-      total_racers_passed += round.racers_passed;
-      total_racers_scheduled += round.racers_scheduled;
+      total_passed += round.passed;
+      total_racers_scheduled += round.passed - round.unscheduled;
       total_heats_scheduled += round.heats_scheduled;
       total_heats_run += round.heats_run;
     }
   }
   return {round: max_round,
           roster_size: total_roster_size,
-          racers_passed: total_racers_passed,
-          racers_scheduled: total_racers_scheduled,
+          passed: total_passed,
+          scheduled: total_racers_scheduled,
           heats_scheduled: total_heats_scheduled,
           heats_run: total_heats_run};
 }
@@ -624,7 +516,8 @@ function offer_new_rounds(rounds, classes) {
   for (var classid in highest_rounds) {
     var round = highest_rounds[classid];
     if (round.heats_scheduled > 0 && round.heats_scheduled == round.heats_run) {
-      round.subgroups = classes[classid].subgroups;
+      var cl = find_by_classid(classes, classid);
+      round.subgroups = cl.subgroups;
       completed_rounds.push(round);
     }
   }
@@ -635,58 +528,63 @@ function offer_new_rounds(rounds, classes) {
   $("#add-new-rounds-button").toggleClass("hidden", completed_rounds.length == 0);
 }
 
-function process_coordinator_poll_response(data) {
-  var timer_state = parse_timer_state(data);
-  var current = parse_current_heat(data);
-  if (!current) {
-    console.log("Returning early because no current heat");
-    return;
+function process_coordinator_poll_json(json) {
+  json['current-heat'].heat_results = [];
+  for (var i = 0; i < json['heat-results'].length; ++i) {
+    json['current-heat'].heat_results.push(json['heat-results'][i]);
   }
   $("#now-racing-group-buttons").empty();
-  update_for_current_round(current);
-  var racers = parse_racers(data)
-  update_for_last_heat(data, racers);
+  update_for_current_round(json['current-heat']);
+  update_for_last_heat(json);
 
   $("#start_race_button_div").toggleClass('hidden',
-                                          timer_state.remote_start != "1");
+                                          !json['timer-state']['remote-start']);
 
-  g_ready_aggregate_classes = parse_ready_aggregate_classes(data);
+  g_ready_aggregate_classes = json['ready-aggregate'];
 
-  var classes = parse_classes(data);
-  var rounds = parse_rounds(data);
-  offer_new_rounds(rounds, classes);
+  for (var i = 0; i < json.rounds.length; ++i) {
+    // May get changed to now-racing for the current round
+    json.rounds[i].category = 
+      json.rounds[i].heats_scheduled > json.rounds[i].heats_run
+      ? 'ready-to-race'
+      : json.rounds[i].heats_run > 0
+      ? 'done-racing'
+      : 'not-yet-scheduled';
+  }
 
-  if (current.master_schedule) {
-    var totals = calculate_totals(rounds);
+  offer_new_rounds(json.rounds, json['classes']);
+
+  if (json['current-heat'].use_master_sched) {
+    var totals = calculate_totals(json.rounds);
     totals.roundid = -1;
-    totals.roundname = totals.classname = "Interleaved Schedule";
+    totals['class'] = totals.name = "Interleaved Schedule";
     totals.category = "master-schedule";
 
     if ($("#master-schedule-group .control_group").length == 0) {
       $("#master-schedule-group").empty();
-      generate_scheduling_control_group(totals, current, timer_state);
+      generate_scheduling_control_group(totals, json['current-heat'], json['timer-state']);
     } else {
-      inject_into_scheduling_control_group(totals, current, timer_state);
+      inject_into_scheduling_control_group(totals, json['current-heat'], json['timer-state']);
     }
     $("#schedule-and-race").addClass('hidden');
     $("#schedule-only").val("Make Schedule");
-  } else if (!current.master_schedule) {
+  } else if (!json['current-heat'].use_master_sched) {
     $("#master-schedule-group").empty();
     $("#schedule-and-race").removeClass('hidden');
     $("#schedule-only").val("Schedule Only");
   }
   // The "Schedule + Race" option from the #schedule_modal shouldn't be offered
   // if we're in interleaved heats:
-  $("#schedule-and-race").toggleClass('hidden', current.master_schedule);
+  $("#schedule-and-race").toggleClass('hidden', json['current-heat'].use_master_sched);
 
   var layout = {'now-racing': [],
                 'ready-to-race': [],
                 'not-yet-scheduled': [],
                 'done-racing': [],
                };
-  $.each(rounds, function (index, round) {
-    if (round.roundid == current.roundid) {
-      current.heats_scheduled = round.heats_scheduled;
+  $.each(json.rounds, function (index, round) {
+    if (round.roundid == json['current-heat'].roundid) {
+      json['current-heat'].heats_scheduled = round.heats_scheduled;
       round.category = 'now-racing';
     }
     layout[round.category].push(round.roundid);
@@ -703,32 +601,32 @@ function process_coordinator_poll_response(data) {
 
   if (matched) {
     // TODO Want to remove everything except data-name="buttons"
-    $.each(rounds, function (index, round) {
-      inject_into_scheduling_control_group(round, current, timer_state);
+    $.each(json.rounds, function (index, round) {
+      inject_into_scheduling_control_group(round, json['current-heat'], json['timer-state']);
     });
   } else {
     g_rounds_layout = layout;
     $(".scheduling_control_group").empty();
     g_aggregate_rounds = [];
-    $.each(rounds, function (index, round) {
+    $.each(json.rounds, function (index, round) {
       if (round.aggregate) {
         g_aggregate_rounds.push(round.roundid);
       }
-      if (round.roundid == current.roundid) {
-        generate_current_round_control_group(round, current, timer_state);
+      if (round.roundid == json['current-heat'].roundid) {
+        generate_current_round_control_group(round, json['current-heat'], json['timer-state']);
       } else {
-        generate_scheduling_control_group(round, current, timer_state);
+        generate_scheduling_control_group(round, json['current-heat'], json['timer-state']);
       }
     });
   }
 
-  generate_timer_state_group(timer_state);
+  generate_timer_state_group(json['timer-state']);
 
-  generate_replay_state_group(parse_replay_state(data));
+  generate_replay_state_group(json['replay-state']);
 
-  generate_current_heat_racers(racers, current, timer_state.lanes);
+  generate_current_heat_racers(json.racers, json['current-heat'], json['timer-state'].lanes);
 
-  if (current.roundid == -100 && current.is_racing) {
+  if (json['current-heat'].roundid == -100 && json['current-heat'].now_racing) {
     $("#now-racing-group")
       .empty()
       .append($("<h3 id='timer-testing-herald'>Simulated racing in progress</h3>")
@@ -739,12 +637,19 @@ function process_coordinator_poll_response(data) {
   }
 
   $("#playlist-start").toggleClass('hidden',
-                                   !(current.roundid == -1 && rounds.some(r => r.next)));
+                                   !(json['current-heat'].roundid == -1 && json.rounds.some(r => r.next)));
 
   // Hide the control group if there's nothing to show
   $("#supplemental-control-group").toggleClass("hidden",
                                                $("#add-new-rounds-button").hasClass("hidden") &&
                                                $("#now-racing-group-buttons").is(":empty"));
+}
+
+function process_coordinator_poll_response(xml) {
+  var poll = xml.documentElement.getElementsByTagName('coordinator_poll');
+  if (poll.length > 0) {
+    process_coordinator_poll_json(JSON.parse(poll[0].textContent));
+  }
 }
 
 function coordinator_poll() {
@@ -754,9 +659,9 @@ function coordinator_poll() {
             data: {query: 'poll.coordinator',
                    roundid: g_current_heat.roundid,
                    heat: g_current_heat.heat},
-            success: function(data) {
+            success: function(json) {
               if (typeof(phantom_testing) == 'undefined' || !phantom_testing) {
-                process_coordinator_poll_response(data);
+                process_coordinator_poll_json(json);
               }
             },
            });

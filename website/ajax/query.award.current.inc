@@ -1,4 +1,3 @@
-<award-presentations>
 <?php
 
 // "Current" award being presented, and whether it's revealed
@@ -8,10 +7,12 @@ require_once('inc/photo-config.inc');
 require_once('inc/standings.inc');
 require_once('inc/ordinals.inc');
 require_once('inc/awards.inc');
+require_once('inc/name-mangler.inc');
 
 $key = read_raceinfo('current_award_key', '');
 $use_subgroups = use_subgroups();
 $reveal = read_raceinfo_boolean('reveal_current_award');
+$name_style = read_name_style();
 
 // award-<awardid>
 // speed-<place>
@@ -45,6 +46,8 @@ if (count($keys) >= 2) {
 
     $awards = array();
     add_speed_awards($awards);
+
+    // json_out('speed-awards', $awards);
 
     if (count($keys) == 4) {
       $rankid = $keys[3];
@@ -90,27 +93,31 @@ if (count($keys) >= 2) {
                            ':awardname' => $awardname));
     }
   } else {
-    echo "<failure code=\"unrecognized-award-code\">Unrecognized award code</failure>\n";
+    json_failure('unrecognized-award-code', "Unrecognized award code");
   }
 }
 
 if (isset($stmt)) {
   foreach ($stmt as $row) {
-    echo '<award key="'.$key.'"'
-      .' awardname="'.htmlspecialchars($row['awardname'], ENT_QUOTES, 'UTF-8').'"'
-      .' reveal="'.($reveal ? "true" : "false").'"'
-      .' carnumber="'.htmlspecialchars($row['carnumber'], ENT_QUOTES, 'UTF-8').'"'
-      .' carname="'.htmlspecialchars($row['carname'], ENT_QUOTES, 'UTF-8').'"'
-      .' firstname="'.htmlspecialchars($row['firstname'], ENT_QUOTES, 'UTF-8').'"'
-      .' lastname="'.htmlspecialchars($row['lastname'], ENT_QUOTES, 'UTF-8').'"'
-      .' classname="'.htmlspecialchars($row['class'], ENT_QUOTES, 'UTF-8').'"'
-      .($use_subgroups ?
-       ' subgroup="'.htmlspecialchars(@$row['rank'], ENT_QUOTES, 'UTF-8').'"' : '')
-    .($row['imagefile'] ? ' headphoto="'.headshots()->url_for_racer($row, RENDER_CROPPED).'"' : '')
-    .($row['carphoto'] ? ' carphoto="'.car_photo_repository()->url_for_racer($row, RENDER_CROPPED).'"' : '')
-    .' duration="'.(microtime(true) - $_SERVER['REQUEST_TIME_FLOAT']).'"'
-      .'/>'."\n";
+    $award = array('key' => $key,
+                   'awardname' => $row['awardname'],
+                   'reveal' => $reveal ? true : false,
+                   'carnumber' => $row['carnumber'],
+                   'carname' => $row['carname'],
+                   'recipient' => mangled_name($row, $name_style));
+    if ($use_subgroups) {
+      $award['subgroup'] = @$row['rank'];
+    }
+    if ($row['imagefile']) {
+      $award['headphoto'] = headshots()->url_for_racer($row, RENDER_CROPPED);
+    }
+    if ($row['carphoto']) {
+      $award['carphoto'] = car_photo_repository()->url_for_racer($row, RENDER_CROPPED);
+    }
+    $award['duration'] = microtime(true) - $_SERVER['REQUEST_TIME_FLOAT'];
+    json_out('current', $award);
+    break;
   }
 }
 
-?></award-presentations>
+?>

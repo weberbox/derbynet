@@ -7,11 +7,15 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import org.json.JSONException;
+import org.json.JSONObject;
+import org.json.JSONTokener;
 
 public class ClientSession {
   private CookieManager manager;
@@ -21,7 +25,35 @@ public class ClientSession {
   private static final List<String> kTimerLogHeaders = new ArrayList<String>(
       Arrays.asList("Content-Type", "text/plain"));
 
+  public static class HttpException extends IOException {
+    public HttpException(int responseCode, String responseMessage, URL url) {
+      this.responseCode = responseCode;
+      this.responseMessage = responseMessage;
+      this.url = url;
+    }
+
+    public HttpException(HttpURLConnection connection) throws IOException {
+      this(connection.getResponseCode(), connection.getResponseMessage(),
+           connection.getURL());
+    }
+
+    public final int responseCode;
+    public final String responseMessage;
+    public final URL url;
+
+    public String getMessage() {
+      return "HTTP response " + responseCode + " (" + responseMessage
+          + ") for " + url;
+    }
+
+    public String getBriefMessage() {
+      return "HTTP response " + responseCode + " (" + responseMessage + ")";
+
+    }
+  }
+
   public ClientSession(String base_url) {
+    LogWriter.info("Attempting connection to " + base_url);
     String lowercase_url = base_url.toLowerCase();
     if (!lowercase_url.startsWith("http://")
         && !lowercase_url.startsWith("https://")) {
@@ -45,7 +77,7 @@ public class ClientSession {
   // variations of the original URL, or return false if there are no more.
   // This implementation considers only one variation.
   private boolean makeUrlVariation() {
-    if (base_url == original_base_url) {  // ptr equality OK for this
+    if (base_url.equals(original_base_url)) {
       if (base_url.endsWith("/derbynet/")) {
         base_url = base_url.substring(0, base_url.lastIndexOf("derbynet/"));
       } else {
@@ -58,10 +90,10 @@ public class ClientSession {
     return false;
   }
 
-  public Element login() throws IOException {
-    return doPostWithVariations("action.php",
-                                "action=login&name=" + Flag.username.value()
-                                + "&password=" + Flag.password.value());
+  public JSONObject login(String role, String password) throws IOException {
+    return doJsonPostWithVariations("action.php",
+                                "action=role.login&name=" + role
+                                + "&password=" + password);
   }
 
   public Element sendTimerMessage(String messageAndParams) throws IOException {
@@ -83,101 +115,237 @@ public class ClientSession {
 
   private Element doPostWithVariations(String url_path, String body)
       throws IOException {
-    Element result;
+    return makeRequestWithVariations(url_path, "POST", null, body);
+  }
 
-    do {
-      result = doPost(url_path, null, body);
-    } while (result == null && makeUrlVariation());
+  private JSONObject doJsonPostWithVariations(String url_path, String body)
+      throws IOException {
+    return makeJsonRequestWithVariations(url_path, "POST", null, body);
+  }
 
-    return result;
+  private URL fullUrl(String url_path) throws MalformedURLException {
+    return new URL(base_url + url_path);
   }
 
   private Element doPost(String url_path, List<String> headers, String body)
       throws IOException {
-    return doPost(new URL(base_url + url_path), headers, body);
+    return doPost(fullUrl(url_path), headers, body);
   }
 
   private Element doPost(URL url, List<String> headers, String body)
       throws IOException {
-    // TODO Sun Security Validator failed
-    HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-    connection.setRequestMethod("POST");
-    connection.addRequestProperty("User-Agent",
-                                  "derby-timer.jar/" + Version.get());
-    if (headers != null) {
-      for (int i = 0; i < headers.size(); i += 2) {
-        connection.addRequestProperty(headers.get(i), headers.get(i + 1));
-      }
-    }
-
-    connection.setDoOutput(true);
-    OutputStreamWriter writer
-        = new OutputStreamWriter(connection.getOutputStream());
-    writer.write(body);
-    writer.flush();
-    writer.close(); // writer.close() may block.
-
-    return getResponse(connection);
+    return makeRequest(url, "POST", headers, body);
   }
 
   public Element doQueryWithVariations(String q) throws IOException {
-    Element result;
-
-    do {
-      result = doQuery(q);
-    } while (result == null && makeUrlVariation());
-
-    return result;
+    return makeRequestWithVariations("action.php?query=" + q, "GET", null, null);
   }
 
-  public Element doQuery(String q) throws IOException {
-    return doQuery(new URL(base_url + "action.php?query=" + q));
-  }
-
-  public Element doQuery(String q, String params) throws IOException {
-    return doQuery(new URL(base_url + "action.php?query=" + q + "&" + params));
+  public JSONObject doJsonQueryWithVariations(String q) throws IOException {
+    return makeJsonRequestWithVariations("action.php?query=" + q,
+                                         "GET", null, null);
   }
 
   // Overridden by SimulatedClientSession
   protected Element doQuery(URL url) throws IOException {
-    HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-    connection.setRequestMethod("GET");
-    connection.addRequestProperty("User-Agent",
-                                  "derby-timer.jar/" + Version.get());
+    return makeRequest(url, "GET", null, null);
+  }
+
+  public Element makeRequestWithVariations(String url_path, String method,
+                                           List<String> headers, String body)
+      throws IOException {
+    Element result = null;
+    HttpException firstException = null;
+
+    try {
+      result = makeRequest(fullUrl(url_path), method, headers, body);
+    } catch (HttpException he) {
+      firstException = he;
+    }
+
+    while (result == null && makeUrlVariation()) {
+      try {
+        result = makeRequest(fullUrl(url_path), method, headers, body);
+      } catch (HttpException he) {
+        LogWriter.info("Ignoring for variation: " + he.getMessage());
+      }
+    }
+
+    if (result == null && firstException != null) {
+      throw firstException;
+    }
+
+    return result;
+  }
+
+  public JSONObject makeJsonRequestWithVariations(String url_path, String method,
+                                           List<String> headers, String body)
+      throws IOException {
+    JSONObject result = null;
+    HttpException firstException = null;
+
+    try {
+      result = makeJsonRequest(fullUrl(url_path), method, headers, body);
+    } catch (HttpException he) {
+      firstException = he;
+    }
+
+    while (result == null && makeUrlVariation()) {
+      try {
+        result = makeJsonRequest(fullUrl(url_path), method, headers, body);
+      } catch (HttpException he) {
+        LogWriter.info("Ignoring for variation: " + he.getMessage());
+      }
+    }
+
+    if (result == null && firstException != null) {
+      throw firstException;
+    }
+
+    return result;
+  }
+
+  private Element makeRequest(URL url, String method, List<String> headers,
+                              String body) throws IOException {
+    HttpURLConnection connection;
+    do {
+      connection = (HttpURLConnection) url.openConnection();
+
+      connection.setRequestMethod(method);
+      connection.addRequestProperty("User-Agent",
+                                    "derby-timer.jar/" + Version.get());
+      if (headers != null) {
+        for (int i = 0; i < headers.size(); i += 2) {
+          connection.addRequestProperty(headers.get(i), headers.get(i + 1));
+        }
+      }
+
+      if (body != null) {
+        connection.setDoOutput(true);
+        OutputStreamWriter writer
+            = new OutputStreamWriter(connection.getOutputStream());
+        writer.write(body);
+        writer.flush();
+        writer.close(); // writer.close() may block.
+      }
+    } while ((url = urlFromRedirection(connection)) != null);
+
     return getResponse(connection);
+  }
+
+  private JSONObject makeJsonRequest(URL url, String method, List<String> headers,
+                              String body) throws IOException {
+    HttpURLConnection connection;
+    do {
+      connection = (HttpURLConnection) url.openConnection();
+
+      connection.setRequestMethod(method);
+      connection.addRequestProperty("User-Agent",
+                                    "derby-timer.jar/" + Version.get());
+      if (headers != null) {
+        for (int i = 0; i < headers.size(); i += 2) {
+          connection.addRequestProperty(headers.get(i), headers.get(i + 1));
+        }
+      }
+
+      if (body != null) {
+        connection.setDoOutput(true);
+        OutputStreamWriter writer
+            = new OutputStreamWriter(connection.getOutputStream());
+        writer.write(body);
+        writer.flush();
+        writer.close(); // writer.close() may block.
+      }
+    } while ((url = urlFromRedirection(connection)) != null);
+
+    return getJsonResponse(connection);
+  }
+
+  private URL urlFromRedirection(HttpURLConnection connection) {
+    try {
+      if (300 <= connection.getResponseCode()
+          && connection.getResponseCode() < 400) {
+        String location = connection.getHeaderField("Location");
+        LogWriter.info(
+            "HTTP Redirect: " + connection.getResponseCode() + " ("
+            + connection.getResponseMessage() + ") to " + location);
+
+        maybeUpdateBaseUrlFromRedirection(connection.getURL(), location);
+        return new URL(location);
+      }
+    } catch (Throwable ex) {
+      LogWriter.info("Failed to process redirection: " + ex.getMessage());
+    }
+
+    return null;
+  }
+
+  private void maybeUpdateBaseUrlFromRedirection(
+      URL url, String redirect_string) {
+    String url_string = url.toString();
+    if (!url_string.startsWith(base_url)) {
+      LogWriter.info("Original URL " + url_string
+          + " doesn't agree with base_url " + base_url);
+      return;
+    }
+    String tail = url_string.substring(base_url.length());
+
+    // Redirect may include query parameters for a GET
+    if (redirect_string.endsWith(tail)) {
+      base_url = redirect_string.substring(
+          0, redirect_string.length() - tail.length());
+      LogWriter.info("Updating base URL to " + base_url);
+    } else {
+      LogWriter.info("Original URL " + url_string
+          + " doesn't agree with tail  of redirect " + redirect_string);
+    }
   }
 
   private Element getResponse(HttpURLConnection connection) throws IOException {
     // This code will block until a response is actually received.  That should
     // be OK as long as there's a thread dedicated to handling requests in
     // this session.
-    if (connection.getResponseCode() == 200) {
+    final int responseCode = connection.getResponseCode();
+    if (responseCode == 200) {
       return parseResponse(connection.getInputStream());
     }
 
-    return null;
+    throw new HttpException(connection);
+  }
+
+  private JSONObject getJsonResponse(HttpURLConnection connection) throws IOException {
+    final int responseCode = connection.getResponseCode();
+    if (responseCode == 200) {
+      return parseJsonResponse(connection.getInputStream());
+    }
+
+    throw new HttpException(connection);
+  }
+
+  protected JSONObject parseJsonResponse(String s) throws IOException {
+    return new JSONObject(s);
+  }
+
+  protected JSONObject parseJsonResponse(final InputStream inputStream)
+      throws IOException {
+    // TODO inputStream.mark(10000);
+    return new JSONObject(new JSONTokener(new InputStreamReader(inputStream)));
   }
 
   protected Element parseResponse(String s) throws IOException {
     return parseResponse(new ByteArrayInputStream(s.getBytes("UTF-8")));
   }
 
+  // For Login request, response may be json rather than xml
   protected Element parseResponse(final InputStream inputStream)
       throws IOException {
     inputStream.mark(10000);
     try {
       DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
       DocumentBuilder db = dbf.newDocumentBuilder();
-      try {
-        return db.parse(inputStream).getDocumentElement();
-      } catch (Exception e) {
-        LogWriter.stacktrace(e);
-        System.err.println("Failed");
-        e.printStackTrace();
-      }
+      return db.parse(inputStream).getDocumentElement();
     } catch (Exception e) {
       LogWriter.stacktrace(e);
-      e.printStackTrace();
     }
     LogWriter.httpResponse("Unparseable response for message");
     inputStream.reset();
@@ -188,6 +356,19 @@ public class ClientSession {
       LogWriter.httpResponse(new String(buffer, 0, bytesRead));
     }
     return null;
+  }
+
+  public static boolean wasSuccessful(JSONObject response) {
+    if (response == null) {
+      System.err.println("null response");
+      return false;
+    }
+    try {
+      return response.getJSONObject("outcome").getString("summary").equals(
+          "success");
+    } catch (JSONException ex) {
+      return false;
+    }
   }
 
   public static boolean wasSuccessful(Element response) {

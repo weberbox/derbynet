@@ -1,6 +1,7 @@
 <?php
 // $_POST['who']:
 //    'all' => all racers
+//    'd' + divisionid => all members of a division
 //    'c' + classid => all members of a class
 //    'r' + rankid => all members of one rank
 //
@@ -19,8 +20,6 @@
 
 require_once('inc/events.inc');
 
-start_response();
-
 $ok = true;
 if (!have_permission(EDIT_RACER_PERMISSION)) {
   not_authorized_body();
@@ -32,6 +31,9 @@ if ($ok) {
   $params = array();
   if ($_POST['who'] == 'all') {
     $where = '';
+  } else if (substr($_POST['who'], 0, 1) == 'd') {
+    $where = 'WHERE divisionid = :divisionid';
+    $params[':divisionid'] = substr($_POST['who'], 1);
   } else if (substr($_POST['who'], 0, 1) == 'c') {
     $where = 'WHERE classid = :classid';
     $params[':classid'] = substr($_POST['who'], 1);
@@ -39,7 +41,7 @@ if ($ok) {
     $where = 'WHERE rankid = :rankid';
     $params[':rankid'] = substr($_POST['who'], 1);
   } else {
-    echo "<failure code='who'>Unrecognized 'who' parameter</failure>\n";
+    json_failure('who', "Unrecognized 'who' parameter");
     $ok = false;
   }
 }
@@ -65,7 +67,7 @@ if ($ok) {
                                .' SET exclude = :value'
                                .' WHERE racerid = :racerid');
   } else {
-    echo "<failure code='what'>Unrecognized 'what' parameter</failure>\n";
+    json_failure('what', "Unrecognized 'what' parameter");
     $ok = false;
   }
 }
@@ -89,7 +91,7 @@ function update_number($racerid) {
   global $update_sql;
   global $car_number;
 
-  echo '<numbered racerid="'.$racerid.'" carnumber="'.$car_number.'"/>'."\n";
+  // echo '<numbered racerid="'.$racerid.'" carnumber="'.$car_number.'"/>'."\n";
 
   $update_sql->execute(array(':carnumber' => $car_number,
                              ':racerid' => $racerid));
@@ -106,9 +108,7 @@ function update_checkin($racerid) {
                                .'                   WHERE racerid = :racerid)'
                                .' AND (finishtime IS NOT NULL OR finishplace IS NOT NULL)',
                                array(':racerid' => $racerid), 0)) {
-    echo '<failure code="alreadyscheduled">'
-         .'Schedule data already exists for this racer'
-         .'</failure>';
+    json_failure('alreadyscheduled', "Schedule data already exists for this racer");
     return false;
   }
 
@@ -119,7 +119,6 @@ function update_checkin($racerid) {
 
   $update_sql->execute(array(':value' => $value,
                              ':racerid' => $racerid));
-  echo "<checkin racerid='".$racerid."'/>\n";  // TODO
   record_event(EVENT_CHECKIN, $racerid);
   return true;
 }
@@ -145,9 +144,7 @@ if ($ok) {
 }
 
 if ($ok) {
-  echo "<success/>\n";
+  json_success();
 }
 
-echo "<reload/>\n";
-
-end_response();
+json_out('reload', true);

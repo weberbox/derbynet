@@ -11,6 +11,7 @@ import org.jeffpiazza.derby.HttpTask;
 import org.jeffpiazza.derby.LogWriter;
 import org.jeffpiazza.derby.AllSerialPorts;
 import org.jeffpiazza.derby.Connector;
+import org.jeffpiazza.derby.Message;
 import org.jeffpiazza.derby.serialport.RecordingSerialPortWrapper;
 import org.jeffpiazza.derby.serialport.SerialPortWrapper;
 import org.jeffpiazza.derby.gui.TimerGui;
@@ -35,9 +36,9 @@ public class TimerTask implements Runnable, HttpTask.TimerHealthCallback {
     this.connector = connector;
 
     timerClasses = new ChoosableList<Class<? extends TimerDevice>>(
-        AllDeviceTypes.allDeviceClasses);
+        AllDeviceTypes.allTimerDeviceClasses());
     if (devicename != null) {
-      timerClasses.choose(timerClassByName(devicename));
+      timerClasses.choose(AllDeviceTypes.getDeviceClass(devicename));
     }
     if (timerGui != null) {
       timerGui.updateTimerClasses(this, timerClasses.allCandidates());
@@ -90,7 +91,9 @@ public class TimerTask implements Runnable, HttpTask.TimerHealthCallback {
     // connection.
     while (true) {
       try {
+        connector.setTimerTask(this);
         device = identifyTimerDevice();
+        // Let the connector know we've (possibly) identified the device
         connector.setTimerTask(this);
         runDevicePollingLoop();
       } catch (TimerDevice.LostConnectionException lce) {
@@ -170,18 +173,6 @@ public class TimerTask implements Runnable, HttpTask.TimerHealthCallback {
   private ChoosableList<String> serialPorts;
   private ChoosableList<Class<? extends TimerDevice>> timerClasses;
 
-  private Class<? extends TimerDevice> timerClassByName(String s) {
-    for (Class<? extends TimerDevice> timerClass : timerClasses.allCandidates()) {
-      if (timerClass.getName().toLowerCase().endsWith(s.toLowerCase())) {
-        return timerClass;
-      }
-    }
-    System.err.println(
-        "**** No device classes match " + s
-        + "; use -h option to get a list of recognized classes");
-    return null;
-  }
-
   // Starts repeatedly scanning all serial ports (or just the one with a given
   // name) for all devices (or just the one with a given name), and returns a
   // TimerDevice if/when it identifies one.  Shows its progress through the
@@ -236,6 +227,7 @@ public class TimerTask implements Runnable, HttpTask.TimerHealthCallback {
               portWrapper = new PlaybackSerialPortWrapper();
               break;
           }
+
           for (Class<? extends TimerDevice> timerClass
                : timerClasses.candidates()) {
             if (userIntervened()) {
@@ -345,7 +337,8 @@ public class TimerTask implements Runnable, HttpTask.TimerHealthCallback {
     try {
       return port.openPort();
     } catch (SerialPortException spe) {
-      LogWriter.stacktrace(spe);
+      LogWriter.serial("openPort fails for " + spe.getPortName() + ": "
+          + spe.getExceptionType());
       System.err.println(spe.getExceptionType());
       return false;
     }
@@ -357,12 +350,8 @@ public class TimerTask implements Runnable, HttpTask.TimerHealthCallback {
       Constructor<? extends TimerDevice> constructor
           = deviceClass.getConstructor(SerialPortWrapper.class);
       return constructor.newInstance(portWrapper);
-    } catch (NoSuchMethodException ex) {
-    } catch (SecurityException ex) {
-    } catch (InstantiationException ex) {
-    } catch (IllegalAccessException ex) {
-    } catch (IllegalArgumentException ex) {
-    } catch (InvocationTargetException ex) {
+    } catch (Throwable ex) {
+      LogWriter.stacktrace(ex);
     }
     return null;
   }
@@ -386,6 +375,7 @@ public class TimerTask implements Runnable, HttpTask.TimerHealthCallback {
       timerGui.confirmDevice(device.hasEverSpoken());
     }
   }
+
   public synchronized TimerDevice device() {
     return device;
   }

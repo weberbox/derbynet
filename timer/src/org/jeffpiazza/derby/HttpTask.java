@@ -6,23 +6,22 @@ import org.w3c.dom.NodeList;
 import java.io.*;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import org.json.JSONObject;
 
 // HttpTask expects to run in its own thread sending outgoing messages and
 // awaiting their responses.  Sends a heartbeat message periodically if the
 // queue remains empty.
 public class HttpTask implements Runnable {
   private ClientSession session;
+  private boolean shouldExit = false;
   // Messages waiting to be sent to web server
   private final ArrayList<Message> queue;
   private TimerHealthCallback timerHealthCallback;
   private HeatReadyCallback heatReadyCallback;
   private AbortHeatCallback abortHeatCallback;
   private RemoteStartCallback remoteStartCallback;
-  // Print queued Messages when actually sent.
-  private boolean traceQueued;
-  // Print heartbeat Messages when actually sent.
-  private boolean traceHeartbeat;
-  private boolean traceResponses;
+  private AssignPortCallback assignPortCallback;
+  private AssignDeviceCallback assignDeviceCallback;
 
   public static final long heartbeatPace = 500;  // ms.
 
@@ -60,25 +59,36 @@ public class HttpTask implements Runnable {
     void onLoginFailed(String message);
   }
 
+  public interface AssignPortCallback {
+    void onAssignPort(String portName);
+  }
+
+  public interface AssignDeviceCallback {
+    void onAssignDevice(String deviceName);
+  }
+
   // When a ClientSession and credentials are available, start() launches
   // the HttpTask in a new Thread.
   public static void start(final ClientSession session,
                            final Connector connector,
+                           final String role, final String password,
                            final LoginCallback callback) {
+    // TODO This gets called by RoleFinder and by the timer GUI directly,
+    // resulting in two HELLO messages to the server.  Need to figure out why.
     LogWriter.setClientSession(session);
     (new Thread() {
       @Override
       public void run() {
         boolean login_ok = false;
         try {
-          Element login_response = session.login();
+          JSONObject login_response = session.login(role, password);
           login_ok = ClientSession.wasSuccessful(login_response);
           if (!login_ok) {
             callback.onLoginFailed("Login failed");
           }
         } catch (UnknownHostException e) {
           callback.onLoginFailed("Unknown host");
-        } catch (IOException e) {
+        } catch (IOException e) {  // Including ClientSession.HttpException
           callback.onLoginFailed(e.getMessage());
         }
 
@@ -98,12 +108,13 @@ public class HttpTask implements Runnable {
     synchronized (queue) {
       queueMessage(new Message.Hello());
     }
+    LogWriter.info("Connection established to " + session.getBaseUrl());
   }
 
-  public void sendIdentified(int nlanes, String timer, String identifier,
-                             boolean confirmed) {
+  public void sendIdentified(int nlanes, String timer, String humanName,
+                             String identifier, boolean confirmed) {
     synchronized (queue) {
-      queueMessage(new Message.Identified(nlanes, timer, identifier,
+      queueMessage(new Message.Identified(nlanes, timer, humanName, identifier,
                                           confirmed));
     }
   }
@@ -116,6 +127,9 @@ public class HttpTask implements Runnable {
       queue.notifyAll();
     }
   }
+
+  public synchronized void setShouldExit() { shouldExit = true; }
+  private synchronized boolean getShouldExit() { return shouldExit; }
 
   public synchronized void registerTimerHealthCallback(TimerHealthCallback cb) {
     this.timerHealthCallback = cb;
@@ -154,6 +168,23 @@ public class HttpTask implements Runnable {
     return cb != null && cb.hasRemoteStart();
   }
 
+  protected synchronized void registerAssignPortCallback(AssignPortCallback cb) {
+    this.assignPortCallback = cb;
+  }
+
+  protected synchronized AssignPortCallback getAssignPortCallback() {
+    return assignPortCallback;
+  }
+
+  protected synchronized void registerAssignDeviceCallback(
+      AssignDeviceCallback cb) {
+    this.assignDeviceCallback = cb;
+  }
+
+  protected synchronized AssignDeviceCallback getAssignDeviceCallback() {
+    return assignDeviceCallback;
+  }
+
   private static int parseIntOrZero(String attr) {
     if (attr.isEmpty()) {
       return 0;
@@ -188,21 +219,16 @@ public class HttpTask implements Runnable {
         }
         if (queue.size() > 0) {
           nextMessage = queue.remove(0);
-          trace = this.traceQueued;
+          trace = Flag.trace_messages.value();
+        } else if (getShouldExit()) {
+          return;
         } else {
           TimerHealthCallback timerHealth = getTimerHealthCallback();
           if (timerHealth != null) {
-            int health = timerHealth.getTimerHealth();
-            // Send heartbeats only if we've actually identified the timer and
-            // it's not unhealthy.
-            if (health != TimerHealthCallback.UNHEALTHY) {
-              nextMessage = new Message.Heartbeat(
-                  health == TimerHealthCallback.HEALTHY);
-              log = trace = this.traceHeartbeat;
-            } else {
-              continue;
-            }
+            nextMessage = new Message.Heartbeat(timerHealth.getTimerHealth());
+            log = trace = Flag.trace_heartbeats.value();
           } else {
+            // This really shouldn't arise: we always register a timer health callback
             continue;
           }
         }
@@ -218,9 +244,15 @@ public class HttpTask implements Runnable {
               StdoutMessageTrace.httpMessage(params);
             }
             if (log) {
-              LogWriter.httpMessage(params);
+              if (nextMessage.getClass() == Message.Flags.class) {
+                LogWriter.httpMessage("message=FLAGS&...");
+              } else {
+                LogWriter.httpMessage(params);
+              }
             }
             response = session.sendTimerMessage(params);
+          } catch (ClientSession.HttpException he) {
+            LogWriter.httpResponse(he.getMessage());
           } catch (Throwable t) {
             LogWriter.trace("Unable to send HTTP message " + params);
             LogWriter.stacktrace(t);
@@ -231,50 +263,89 @@ public class HttpTask implements Runnable {
         }
       }
 
-      if (!ClientSession.wasSuccessful(response)) {
-        continue;
-      }
-
-      if (traceResponses) {
-        if (trace) {
-          StdoutMessageTrace.httpResponse(nextMessage, response);
-        }
-        if (log) {
-          LogWriter.httpResponse(response);
-        }
-      }
-
-      NodeList remote_logs = response.getElementsByTagName("remote-log");
-      if (remote_logs.getLength() > 0) {
-        LogWriter.setRemoteLogging(Boolean.parseBoolean(
-            ((Element) remote_logs.item(0)).getAttribute("send")));
-      }
-
-      if (response.getElementsByTagName("abort").getLength() > 0) {
-        AbortHeatCallback cb = getAbortHeatCallback();
-        if (cb != null) {
-          cb.onAbortHeat();
+      if (ClientSession.wasSuccessful(response)) {
+        // We don't really change behavior (other than logging) for an
+        // unsuccessful response
+        if (Flag.trace_responses.value()) {
+          if (trace) {
+            StdoutMessageTrace.httpResponse(nextMessage, response);
+          }
+          if (log) {
+            LogWriter.httpResponse(response);
+          }
         }
       }
 
-      NodeList heatReadyNodes = response.getElementsByTagName("heat-ready");
-      if (heatReadyNodes.getLength() > 0) {
-        HeatReadyCallback cb = getHeatReadyCallback();
-        if (cb != null) {
-          Element heatReady = (Element) heatReadyNodes.item(0);
-          int lanemask = parseIntOrZero(heatReady.getAttribute("lane-mask"));
-          int roundid = parseIntOrZero(heatReady.getAttribute("roundid"));
-          int heat = parseIntOrZero(heatReady.getAttribute("heat"));
-          cb.onHeatReady(roundid, heat, lanemask);
-        }
-      }
+      decodeResponse(response);
+    }
+  }
 
-      if (response.getElementsByTagName("remote-start").getLength() > 0) {
-        RemoteStartCallback cb = getRemoteStartCallback();
-        if (cb != null) {
-          cb.remoteStart();
-        }
+  private void decodeResponse(Element response) {
+    NodeList nodes = response.getElementsByTagName("remote-log");
+    if (nodes.getLength() > 0) {
+      LogWriter.setRemoteLogging(Boolean.parseBoolean(
+          ((Element) nodes.item(0)).getAttribute("send")));
+    }
+
+    if (response.getElementsByTagName("abort").getLength() > 0) {
+      LogWriter.httpResponse("<abort>");
+      AbortHeatCallback cb = getAbortHeatCallback();
+      if (cb != null) {
+        cb.onAbortHeat();
       }
+    }
+
+    if ((nodes = response.getElementsByTagName("heat-ready")).getLength() > 0) {
+      Element heatReady = (Element) nodes.item(0);
+      int lanemask = parseIntOrZero(heatReady.getAttribute("lane-mask"));
+      int roundid = parseIntOrZero(heatReady.getAttribute("roundid"));
+      int heat = parseIntOrZero(heatReady.getAttribute("heat"));
+      LogWriter.httpResponse(
+          "<heat-ready: roundid=" + roundid + ", heat=" + heat + ">");
+      HeatReadyCallback cb = getHeatReadyCallback();
+      if (cb != null) {
+        cb.onHeatReady(roundid, heat, lanemask);
+      }
+    }
+
+    if (response.getElementsByTagName("remote-start").getLength() > 0) {
+      LogWriter.httpResponse("<remote-start>");
+      RemoteStartCallback cb = getRemoteStartCallback();
+      if (cb != null) {
+        cb.remoteStart();
+      }
+    }
+
+    nodes = response.getElementsByTagName("assign-flag");
+    for (int i = 0; i < nodes.getLength(); ++i) {
+      Element assignment = (Element) nodes.item(0);
+      String flagName = assignment.getAttribute("flag");
+      String value = assignment.getAttribute("value");
+      LogWriter.httpResponse("<assign-flag " + flagName + ": " + value + ">");
+      Flag.assignFlag(flagName, value);
+    }
+
+    if ((nodes = response.getElementsByTagName("assign-port")).getLength() > 0) {
+      String portName = ((Element) nodes.item(0)).getAttribute("port");
+      LogWriter.httpResponse("<assign-port " + portName + ">");
+      AssignPortCallback cb = getAssignPortCallback();
+      if (cb != null) {
+        cb.onAssignPort(portName);
+      }
+    }
+
+    if ((nodes = response.getElementsByTagName("assign-device")).getLength() > 0) {
+      String deviceName = ((Element) nodes.item(0)).getAttribute("device");
+      LogWriter.httpResponse("<assign-device " + deviceName + ">");
+      AssignDeviceCallback cb = getAssignDeviceCallback();
+      if (cb != null) {
+        cb.onAssignDevice(deviceName);
+      }
+    }
+
+    if (response.getElementsByTagName("query").getLength() > 0) {
+      LogWriter.httpResponse("<query>");
+      queueMessage(new Message.Flags());
     }
   }
 }

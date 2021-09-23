@@ -2,21 +2,38 @@
 require_once('inc/schema_version.inc');
 require_once('inc/sql-script.inc');
 require_once(sql_file_path('column-widths'));
+require_once('inc/find_or_create_class.inc');
+require_once('inc/divisions.inc');
+require_once('inc/events.inc');
 
 define('UNSPECIFIED_CLASS', '* Not specified');
 define('UNSPECIFIED_RANK', '* Not specified');
 
-// $values are: { firstname, lastname, carnumber, carname, rankid, classid, exclude }
-// Must have at least one of classid or rankid.
+// $values are: { firstname, lastname, carnumber, carname, divisionid, division, exclude }
+//   division is ignored if divisionid is provided.
+//   If neither division nor divisionid is provided, 'Default' is assumed
 
 function insert_new_racer($values) {
   global $db;
 
-  if (!isset($values['classid'])) {
+  if (!isset($values['classid']) && isset($values['rankid'])) {
     $values['classid'] = read_single_value('SELECT classid FROM Ranks WHERE rankid = :rankid',
                                            array(':rankid' => $values['rankid']));
   }
 
+  if (!isset($values['divisionid']) && !isset($values['division']) && isset($values['classid'])) {
+    // TODO This is an interim arrangement only
+    $values['divisionid'] = read_single_value('SELECT divisionid FROM Divisions'
+                                              .' WHERE name = (SELECT class FROM Classes'
+                                              .'                WHERE classid = :classid)',
+                                              array(':classid' => $values['classid']));
+  }
+
+  if (!isset($values['divisionid'])) {
+    $values['divisionid'] = find_or_create_division(
+      isset($values['division']) ? $values['division'] : 'Default');
+  }
+  
   if (!isset($values['carnumber']) || $values['carnumber'] == '') {
     $max_carnumber = read_single_value('SELECT MAX(carnumber) FROM RegistrationInfo'
                                        .' WHERE rankid = :rankid',
@@ -25,22 +42,33 @@ function insert_new_racer($values) {
       $max_carnumber = $values['rankid'] * 100;
     }
     $values['carnumber'] = $max_carnumber + 1;
-    echo "<chosen-carnumber>".$values['carnumber']."</chosen-carnumber>\n";
   }
 
   if (read_single_value('SELECT COUNT(*) FROM RegistrationInfo'
                         .' WHERE carnumber = :carnumber',
                         array(':carnumber' => $values['carnumber'])) > 0) {
-    echo "<warning>Duplicate car number ".$values['carnumber']."</warning>\n";
+    json_out('warnings', array("Duplicate car number $values[carnumber]"));
   }
 
+  if (!isset($values['classid'])) {
+    list($classid, $rankid) = read_single_row('SELECT classid, rankid FROM Ranks'
+                                              .' WHERE rankid = (SELECT rankid FROM Divisions'
+                                              .'                 WHERE divisionid = :divisionid)',
+                                              array(':divisionid' => $values['divisionid']));
+    $values['classid'] = $classid;
+    $values['rankid'] = $rankid;
+  }
+  json_out('debug', $values);
+
   $stmt = $db->prepare('INSERT INTO RegistrationInfo (carnumber, lastname, firstname, carname,'
-                       .'                             rankid, classid, exclude)'
-                       .' VALUES(:carnumber, :lastname, :firstname, :carname, :rankid, :classid, :exclude)');
+                       .'                             divisionid, rankid, classid, exclude)'
+                       .' VALUES(:carnumber, :lastname, :firstname, :carname,'
+                       .'        :divisionid, :rankid, :classid, :exclude)');
   $stmt->execute(array(':carnumber' => trim($values['carnumber']),
                        ':carname' => trim($values['carname']),
                        ':firstname' => trim($values['firstname']),
                        ':lastname' => trim($values['lastname']),
+                       ':divisionid' => $values['divisionid'],
                        ':rankid' => $values['rankid'],
                        ':classid' => $values['classid'],
                        ':exclude' => (isset($values['exclude']) && $values['exclude']) ? 1 : 0));
@@ -65,83 +93,6 @@ function insert_new_racer($values) {
             //
             // .' AND Roster.classid = RegistrationInfo.classid'
             .' AND Roster.racerid = RegistrationInfo.racerid)');
-  
-}
-
-function create_class($classname, $with_first_round = true) {
-  global $db;
-  if (schema_version() >= 2) {
-    $sortorder = read_single_value('SELECT 1 + MAX(sortorder) FROM Classes');
-    if (!$sortorder) {
-      $sortorder = read_single_value('SELECT 1 + COUNT(*) FROM Classes');
-    }
-  }
-  $stmt = $db->prepare('INSERT INTO Classes(class) VALUES(:classname)');
-  $stmt->execute(array(':classname' => $classname));
-  $classid = read_single_value('SELECT classid FROM Classes WHERE class = :classname',
-                               array(':classname' => $classname));
-  if (schema_version() >= 2) {
-    $stmt = $db->prepare('UPDATE Classes'
-                         .' SET sortorder = :sortorder'
-                         .' WHERE classid = :classid');
-    $stmt->execute(array(':classid' => $classid,
-                         ':sortorder' => $sortorder));
-  }
-
-  // Creating a class usually requires creating a corresponding 1st racing round
-  if ($with_first_round) {
-    $stmt = $db->prepare('INSERT INTO Rounds(round, classid)'
-                         .' SELECT 1, classid'
-                         .' FROM Classes'
-                         .' WHERE classid = :classid'
-                         .' AND NOT EXISTS(SELECT 1 FROM Rounds'
-                         .'  WHERE Rounds.classid = Classes.classid'
-                         .'    AND Rounds.round = 1)');
-    $stmt->execute(array(':classid' => $classid));
-  }
-
-  return $classid;
-}
-
-function find_or_create_class($classname, $with_first_round = true) {
-  global $db;
-  $classname = substr(trim($classname), 0, CLASS_COLUMN_WIDTH);
-  $classid = read_single_value('SELECT classid FROM Classes WHERE class = :classname',
-                               array(':classname' => $classname));
-  if ($classid === false) {
-    $classid = create_class($classname, $with_first_round);
-  }
-
-  return $classid;
-}
-
-function find_or_create_rank($rankname, $classid) {
-  global $db;
-  $rankname = substr(trim($rankname), 0, RANK_COLUMN_WIDTH);
-  $rankid = read_single_value('SELECT rankid FROM Ranks'
-                              .' WHERE rank = :rankname AND classid = :classid',
-                              array(':rankname' => $rankname,
-                                    ':classid' => $classid));
-  if ($rankid === false) {
-    $stmt = $db->prepare('INSERT INTO Ranks(rank, classid) VALUES(:rankname, :classid)');
-    $stmt->execute(array(':rankname' => $rankname,
-                         ':classid' => $classid));
-    $rankid = read_single_value('SELECT rankid FROM Ranks'
-                                .' WHERE rank = :rankname AND classid = :classid',
-                                array(':rankname' => $rankname,
-                                      ':classid' => $classid));
-    if (schema_version() >= 2) {
-      $nranks = read_single_value('SELECT COUNT(*) FROM Ranks WHERE classid = :classid',
-                                  array(':classid' => $classid));
-      $stmt = $db->prepare('UPDATE Ranks'
-                           .' SET sortorder = :nranks'
-                           .' WHERE rankid = :rankid');
-      $stmt->execute(array(':nranks' => $nranks,
-                           ':rankid' => $rankid));
-    }
-  }
-
-  return $rankid;
 }
 
 // Manufactures a classid and rankid when there are none.  This arises only if
@@ -166,5 +117,4 @@ function force_populate_a_rankid() {
 
   return $rankid;
 }
-
 ?>

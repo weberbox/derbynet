@@ -1,37 +1,3 @@
-var Overlay = {
-  overlay_shown: '',
-
-  clear: function() {
-    $(".overlay_foreground").fadeTo(200, 0);
-    $("#overlay_background").fadeTo(200, 0);
-    this.overlay_shown = '';
-  },
-
-  show: function(selector) {
-    if (this.overlay_shown != selector) {
-      var background = $("#overlay_background");
-      background.css({'display': 'block',
-                      'opacity': 0});
-      background.fadeTo(200, 0.5);
-      $(".overlay_foreground").css('opacity', 0);
-
-      var overlay = $(selector);
-      overlay.css({
-        'display': 'block',
-        'position': 'fixed',
-        'opacity': 0,
-        'z-index': 11000,
-        'left' : '50%',
-        'margin-left': '-256px',
-        'top': $(window).height() / 2 + "px",
-        'margin-top': '-256px'
-      });
-      overlay.fadeTo(200, 1);
-      this.overlay_shown = selector;
-    }
-  }
-};
-
 var Lineup = {
   // heat and roundid identify the lineup currently displayed.  They're also
   // sent in the polling query to tell the server what lineup we'd want results
@@ -61,28 +27,30 @@ var Lineup = {
   // After an animation of heat results, hold the display for a few seconds
   // before advancing to the next heat.
   start_display_linger: function() {
-    this.display_lingers_until = (new Date()).valueOf() + g_linger_ms;
+    this.display_lingers_until = Date.now() + g_linger_ms;
   },
 
   ok_to_change: function() {
-    return !this.holding && (new Date()).valueOf() > this.display_lingers_until;
+    return !this.holding && Date.now() > this.display_lingers_until;
   },
 
   // When the current heat differs from what we're presently displaying,
   // we get a <current-heat/> element, plus some number of <racer>
   // elements identifying the new heat's contestants.
-  process_new_lineup: function(now_racing) {
-    var current = now_racing.getElementsByTagName("current-heat")[0];
-    if (now_racing.getElementsByTagName('timer-trouble').length > 0) {
+  process_new_lineup: function(data, row_height) {
+    var current = data["current-heat"];
+    if (data.hasOwnProperty('timer-trouble')) {
       Overlay.show('#timer_overlay');
-    } else if (current.getAttribute("now-racing") == "0" && this.ok_to_change()) {
+    } else if (!current["now-racing"] && this.ok_to_change()) {
       Overlay.show('#paused_overlay');
     } else {
       Overlay.clear();
     }
 
-    if (now_racing.getElementsByTagName('timer-test').length > 0) {
-      // Overlay.show('#testing_overlay');
+    if (data.hasOwnProperty('timer-test')) {
+      // In timer-test mode, we hide several columns (marked .no-test) and add
+      // in their place a single-cell .test-only column showing the
+      // "timer-testing" image.  When not in timer-test mode, undo all of that.
       if ($('td.test-only').length == 0) {
         $(".no-test").addClass('hidden');
         $("tr#table-headers th").first().after("<th class='test-only'/>");
@@ -100,29 +68,30 @@ var Lineup = {
     // We always need to notice an increase in the number of heat-results, in
     // case they get cleared before the ok_to_change() test lets us update the
     // screen.
-    var new_heat_results = now_racing.getElementsByTagName("heat-result").length;
+    var new_heat_results =
+        data.hasOwnProperty('heat-results') ? data["heat-results"].length : 0;
     if (new_heat_results > this.previous_heat_results) {
       this.previous_heat_results = new_heat_results;
     }
 
     if (this.ok_to_change()) {
-      var new_roundid = current.getAttribute("roundid");
-      var new_heat = current.getAttribute("heat");
+      var new_roundid = current.roundid;
+      var new_heat = current.heat;
       var is_new_heat = new_roundid != this.roundid || new_heat != this.heat
           || new_heat_results < this.previous_heat_results;
       this.roundid = new_roundid;
       this.heat = new_heat;
       this.previous_heat_results = new_heat_results;
 
-      var nheats = current.getAttribute('number-of-heats');
+      var nheats = current['number-of-heats'];
       if (nheats) {
-        var round_class_name = current.textContent;
+        var round_class_name = current.name;
         $('.banner_title').text((round_class_name ? round_class_name + ', ' : '')
                                 + 'Heat ' + this.heat + ' of ' + nheats);
       }
 
-      var racers = now_racing.getElementsByTagName("racer");
-      var zero = now_racing.getElementsByTagName('zero')[0].getAttribute('zero');
+      var racers = data.racers;
+      var zero = data.precision == 4 ? '0.0000' : '0.000';
 
       if (is_new_heat && racers.length > 0) {
         FlyerAnimation.enable_flyers();
@@ -139,40 +108,46 @@ var Lineup = {
         $('[data-lane] .photo img').remove();
         for (var i = 0; i < racers.length; ++i) {
           var r = racers[i];
-          var lane = r.getAttribute('lane');
+          var lane = r.lane;
           $('[data-lane="' + lane + '"] .lane').text(lane);
           $('[data-lane="' + lane + '"] .name').html('<div></div>');
-          $('[data-lane="' + lane + '"] .name div').text(r.getAttribute('name'));
-          if (r.hasAttribute('photo') && r.getAttribute('photo') != '') {
+          $('[data-lane="' + lane + '"] .name div').text(r.name);
+          if (r.hasOwnProperty('photo') && r.photo != '') {
             $('[data-lane="' + lane + '"] .photo').html(
-              '<img src="' + r.getAttribute('photo') + '"/>');
+              $('<img/>')
+                .attr('src', r.photo)
+                .css('max-height', row_height)
+            );
           }
 
-          if (r.hasAttribute('carname') && r.getAttribute('carname') != '') {
+          if (r.hasOwnProperty('carname') && r.carname != '') {
             $('[data-lane="' + lane + '"] .name').append(' <span id="carname-' + lane + '" class="subtitle"/>');
-            $('#carname-' + lane).text('"' + r.getAttribute('carname') + '"');
+            $('#carname-' + lane).text('"' + r.carname + '"');
           }
-          if (r.hasAttribute('subgroup')) {
+          if (r.hasOwnProperty('subgroup')) {
             $('[data-lane="' + lane + '"] .name').append(' <span id="subgroup-' + lane + '" class="subtitle"/>');
-            $('#subgroup-' + lane).text(r.getAttribute('subgroup'));
+            $('#subgroup-' + lane).text(r.subgroup);
           }
 
-          $('[data-lane="' + lane + '"] .carnumber').text(r.getAttribute('carnumber'));
+          $('[data-lane="' + lane + '"] .carnumber').text(r.carnumber);
         }
       } else if (racers.length > 0) {
 
         // Same heat, but possibly updated photo paths
         for (var i = 0; i < racers.length; ++i) {
           var r = racers[i];
-          var lane = r.getAttribute('lane');
-          if (r.hasAttribute('photo') && r.getAttribute('photo') != '') {
+          var lane = r.lane;
+          if (r.hasOwnProperty('photo') && r.photo != '') {
             if ($('[data-lane="' + lane + '"] .photo img').length == 0) {
               // A window resize, below, may have removed the <img/> element on an interim basis
               $('[data-lane="' + lane + '"] .photo').html(
-                '<img src="' + r.getAttribute('photo') + '"/>');
+                $('<img/>')
+                  .attr('src', r.photo)
+                  .css('max-height', row_height)
+              );
             }
-            if (r.getAttribute('photo') != $('[data-lane="' + lane + '"] .photo img').attr('src')) {
-              $('[data-lane="' + lane + '"] .photo img').attr('src', r.getAttribute('photo'));
+            if (r.photo != $('[data-lane="' + lane + '"] .photo img').attr('src')) {
+              $('[data-lane="' + lane + '"] .photo img').attr('src', r.photo);
             }
           } else {
             $('[data-lane="' + lane + '"] .photo').empty();
@@ -275,8 +250,8 @@ var Poller = {
   // detect a failure to queue a new request.
   time_of_last_request: 0,
 
-  // Records the identifier of the timer to send the next polling request, or 0
-  // if no request is queued.
+  // Records the identifier of the timeout that will send the next polling
+  // request, or 0 if no request is queued.
   id_of_timeout: 0,
 
   // If we're being shown within a replay iframe, suspend polling while a replay
@@ -304,6 +279,8 @@ var Poller = {
     } else if (this.suspended) {
       Poller.queue_next_request(roundid, heat);
     } else {
+      // TODO It shouldn't be necessary to send row-height to the server;
+      // instead just construct a racer photo URL from the returned racerid.
       var row_height = 0;
       var photo_cells = $('td.photo');
       var border = parseInt(photo_cells.css('border-bottom-width'));
@@ -313,15 +290,16 @@ var Poller = {
         row_height = Math.floor(($(window).height() - photo_cells.position().top) / photo_cells.length) - border;
       }
 
-      this.time_of_last_request = (new Date()).valueOf();
+      this.time_of_last_request = Date.now();
       $.ajax('action.php',
              {type: 'GET',
-              data: {query: 'poll.now-racing',
+              data: {query: 'poll',
+                     values: 'current-heat,heat-results,precision,racers,timer-trouble',
                      roundid: roundid,
                      heat: heat,
                      'row-height': row_height},
               success: function(data) {
-                process_polling_result(data);
+                process_polling_result(data, row_height);
               },
               error: function() {
                 Poller.queue_next_request(roundid, heat);
@@ -336,42 +314,40 @@ var Poller = {
   // next request, the watchdog periodically tests whether one seems overdue,
   // and may queue a new request if so.
   watchdog: function() {
-    if (this.id_of_timeout != 0 && this.time_of_last_request + 15000 < (new Date()).valueOf()) {
+    if (this.id_of_timeout != 0 && this.time_of_last_request + 15000 < Date.now()) {
       console.error("Watchdog notices no requests lately, and none queued!");
       this.queue_next_request();
     }
   }
 };
 
-// See ajax/query.poll.now-racing.inc for XML format
-
 // Processes the top-level <now-racing> element.
 //
-// Walks through each of the <heat-result lane= time= place= speed=> elements,
+// Walks through each of the heat-result {lane= time= place= speed=} elements,
 // in order, building a mapping from the reported place to the matching lane.
 //
-
-function process_polling_result(now_racing) {
-  var heat_results = now_racing.getElementsByTagName("heat-result");
-  if (heat_results.length > 0) {
+function process_polling_result(data, row_height) {
+  var precision = data.hasOwnProperty('precision') ? data.precision : 3;
+  var heat_results = data["heat-results"];
+  if (heat_results && heat_results.length > 0) {
     var place_to_lane = new Array();  // place => lane
     for (var i = 0; i < heat_results.length; ++i) {
       var hr = heat_results[i];
-      var lane = hr.getAttribute('lane');
-      var place = hr.getAttribute('place');
+      var lane = hr.lane;
+      var place = hr.place;
       place_to_lane[parseInt(place)] = lane;
 
       $('[data-lane="' + lane + '"] .time')
         .css({opacity: 100})
-        .text(hr.getAttribute('time'));
+        .text(Number.parseFloat(hr.time).toFixed(precision));
       if (FlyerAnimation.ok_to_animate) {
         $('[data-lane="' + lane + '"] .place').css({opacity: 0});
       }
       $('[data-lane="' + lane + '"] .place span').text(place);
-      if (hr.getAttribute('speed') != '') {
+      if (hr.speed != '') {
         $('[data-lane="' + lane + '"] .speed')
           .css({opacity: 100})
-          .text(hr.getAttribute('speed'));
+          .text(hr.speed);
       }
     }
 
@@ -381,13 +357,13 @@ function process_polling_result(now_racing) {
         // Need to continue to poll for repeat-animation, just not
         // accept new participants for 10 seconds.
         Lineup.start_display_linger();
-        Lineup.process_new_lineup(now_racing);
+        Lineup.process_new_lineup(data, row_height);
       });
     } else {
-      Lineup.process_new_lineup(now_racing);
+      Lineup.process_new_lineup(data, row_height);
     }
   } else {
-    Lineup.process_new_lineup(now_racing);
+    Lineup.process_new_lineup(data, row_height);
   }
 }
 

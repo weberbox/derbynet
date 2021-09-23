@@ -15,30 +15,86 @@ require_once('inc/authorize.inc');
 
 require_once('inc/action-helpers.inc');
 
-if (!empty($_POST)) {
-    header('Content-Type: text/xml; charset=utf-8');
-    echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-    if (substr($_POST['action'], -7) != '.nodata') {
-      require_once('inc/data.inc');
-    }
-    if (!@include 'ajax/action.'.$_POST['action'].'.inc') {
-        start_response();
-	echo '<failure code="unrecognized">Unrecognized action: '.@$_POST['action'].'</failure>';
-        end_response();
-    }
-} else if (!empty($_GET)) {
-    header('Content-Type: text/xml; charset=utf-8');
-    echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-    if (substr($_GET['query'], -7) != '.nodata') {
-      require_once('inc/data.inc');
-    }
-    if (!@include 'ajax/query.'.$_GET['query'].'.inc') {
-        start_response();
-        echo '<failure code="unrecognized">Unrecognized query: '.@$_GET['query'].'</failure>';
-        end_response();
-    }
-} else {
-    echo '<!DOCTYPE html><html><head><title>Not a Page</title></head><body><h1>This is not a page.</h1></body></html>';
+$json_out = array();
+
+function json_out($key, $value) {
+  global $json_out;
+  $json_out[$key] = $value;
 }
+
+function json_success() {
+  json_out('outcome', array('summary' => 'success',
+                            'code' => 'success',
+                            'description' => ''));
+}
+
+function json_failure($code, $description) {
+  json_out('outcome', array('summary' => 'failure',
+                            'code' => $code,
+                            'description' => $description));
+}
+
+function json_sql_failure($sql) {
+  global $db;
+  $info = $db->errorInfo();
+  json_failure('sql'.$info[0].'-'.$info[1], "$sql failed: $info[2] [EOM]");
+}
+
+function json_not_authorized() {
+  json_failure('notauthorized', "Not authorized -- please see race coordinator.");
+}
+
+if (empty($_POST) && empty($_GET)) {
+  echo '<!DOCTYPE html><html><head><title>Not a Page</title></head><body><h1>This is not a page.</h1></body></html>';
+  exit(1);
+}
+
+$is_action = !empty($_POST);
+$inc = $is_action ? @$_POST['action'] : @$_GET['query'];
+$in_json = $inc != 'timer-message' && (strpos($inc, 'snapshot') === false)
+           // These are to provide an error message for older derby-timer.jar
+           && $inc != 'login' && $inc != 'roles';
+
+if ($in_json) {
+  header('Content-Type: application/json; charset=utf-8');
+} else {
+  header('Content-Type: text/xml; charset=utf-8');
+  echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+}
+
+if (substr($inc, -7) != '.nodata') {
+  require_once('inc/data.inc');
+}
+
+if ($is_action) {
+  $args = array();
+  foreach ($_POST as $attr => $val) {
+    $args[$attr] = $attr == 'password' ? '...' : $val;
+  }
+  json_out('action', $args);
+  json_out('outcome', array('summary' => 'in-progress',
+                            'code' => 'in-progress',
+                            'description' => 'No outcome defined.'));
+}
+
+$prefix = $is_action ? 'action' : 'query';
+if (!@include 'ajax/'.$prefix.'.'.$inc.'.inc') {
+  if ($in_json) {
+    json_failure('unrecognized', "Unrecognized $prefix: $inc");
+  } else {
+    start_response();
+    echo '<failure code="unrecognized">Unrecognized '.$prefix.': '.$inc.'</failure>';
+    end_response();
+  }
+}
+
+if ($in_json) {
+  if (empty($json_out)) {
+    $json_out = new stdClass();
+  }
+  echo json_encode($json_out, JSON_PRETTY_PRINT | JSON_NUMERIC_CHECK);
+  echo "\n";
+}
+
 
 ?>

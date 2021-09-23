@@ -13,7 +13,33 @@ function compare_by_finishtime(&$lhs, &$rhs) {
 // $_POST['lane1'], $_POST['lane2'], etc. for times
 // Optionally, $_POST['place1'], $_POST['place2'], etc., for places (by lane)
 //
-function write_heat_results() {
+// Returns zero-based array of {time, place}, e.g., with lane 1 result at index 0.
+// Lanes without reported results appear as empty array values.
+function parse_heat_results($nlanes) {
+  $results = array();
+  for ($i = 0; $i < $nlanes; ++$i) {
+    $results[] = array();
+  }
+
+  foreach ($_POST as $key => $value) {
+    if (substr($key, 0, 4) == 'lane') {
+      $lane = intval(substr($key, 4));
+      if (0 < $lane && $lane <= $nlanes) {
+        $results[$lane - 1]['time'] = $value;
+      }
+    } else if (substr($key, 0, 5) == 'place') {
+      $lane = intval(substr($key, 5));
+      if (0 < $lane && $lane <= $nlanes) {
+        $results[$lane - 1]['place'] = $value;
+      }
+    }
+  }
+  return $results;
+}
+
+// $results argument is a zero-based array of {time, place} entries, as produced by
+// parse_heat_results, above.
+function write_heat_results($results) {
   global $db;
 
   $current = get_running_round();
@@ -27,9 +53,12 @@ function write_heat_results() {
     // results because new results are available.)
     timer_test_clear_old_results();
     timer_test_record_heat($heat);
-    foreach ($_POST as $key => $value) {
-      if (substr($key, 0, 4) == 'lane' || substr($key, 0, 5) == 'place') {
-        timer_test_store_result($key, $value);
+    foreach ($results as $lane0 => $value) {
+      if (isset($value['time'])) {
+        timer_test_store_result('lane'.($lane0 + 1), $value['time']);
+      }
+      if (isset($value['place'])) {
+        timer_test_store_result('place'.($lane0 + 1), $value['place']);
       }
     }
     return true;
@@ -41,6 +70,12 @@ function write_heat_results() {
     // TODO: Results from masked-out lanes are a bad sign
     // General strategy for problems should be: reject results, but log them
     // somewhere that can be presented on coordinator dashboard.
+
+    if ((isset($_POST['roundid']) && $_POST['roundid'] != $roundid) ||
+        (isset($_POST['heat']) && $_POST['heat'] != $heat)) {
+      echo "<failure code='wrong-heat'>Expecting heat results for roundid $roundid and heat $heat</failure>";
+      return false;
+    }
 
     $all_times = array();  // array of {resultid, lane, finishtime, finishplace} for scheduled lanes
     $all_times_posted = true;
@@ -62,18 +97,15 @@ function write_heat_results() {
                            'finishplace' => $row['finishplace']);
       // If $_POST doesn't include a new value for finishtime, then leave
       // the old one (if there was one).
-      if (isset($_POST['lane'.$lane])) {
-        $result = $_POST['lane'.$lane];
+      if (isset($results[$lane - 1]['time'])) {
+        $result = $results[$lane - 1]['time'];
         if ($result == '') $result = 0.0;
         $all_times[count($all_times) - 1]['finishtime'] = $result;
       } else {
-        if (!isset($all_times[count($all_times) - 1]['finishtime'])) {
-          $all_times[count($all_times) - 1]['finishtime'] = DNF_TIME;
-        }
         $all_times_posted = false;
       }
-      if (isset($_POST['place'.$lane])) {
-        $all_times[count($all_times) - 1]['finishplace'] = $_POST['place'.$lane];
+      if (isset($results[$lane - 1]['place'])) {
+        $all_times[count($all_times) - 1]['finishplace'] = $results[$lane - 1]['place'];
       } else {
         $all_places_posted = false;
       }
@@ -84,10 +116,20 @@ function write_heat_results() {
       // Make up finish places based on finish times, if finish places weren't
       // included in the post.  The $all_times_posted test is to avoid computing
       // places if not all times were reported.
-      usort($all_times, 'compare_by_finishtime');  // Now index gives finish place - 1
-      for ($i = 0; $i < count($all_times); ++$i) {
-        if (isset($all_times[$i]['finishtime'])) {
-          $all_times[$i]['finishplace'] = 1 + $i;
+      usort($all_times, 'compare_by_finishtime');  // Now, index gives finish place - 1, except for ties
+
+      $place = count($all_times);
+      for ($p = $place; $p > 0; --$p) {
+        if (!isset($all_times[$p - 1]['finishtime'])) {
+          // TODO Can this happen?
+          echo "\n<broken>\n";
+          continue;
+        }
+        $all_times[$p - 1]['finishplace'] = $place;
+        if ($p > 1 && $all_times[$p - 1]['finishtime'] == $all_times[$p - 2]['finishtime']) {
+          // Tie; don't decrement $place
+        } else {
+          $place = $p - 1;
         }
       }
     }

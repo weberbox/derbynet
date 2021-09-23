@@ -31,6 +31,8 @@ function print_selected() {
       options[opt] = parseInt(control.val());
     } else if (opt_data.type == 'string') {
       options[opt] = control.val();
+    } else if (opt_data.type == 'radio') {
+      options[opt] = control.filter(':checked').val();
     } else {
       console.error('Unrecognized option type: ' + opt_data.type);
     }
@@ -65,10 +67,9 @@ function on_tr_click(event) {
 }
 
 function process_racer_list(data) {
-  var racers = data.getElementsByTagName('racer');
   var table = $("div#subject-racers table");
-  $.each(racers, function (index, racer) {
-    var racerid = racer.getAttribute("racerid");
+  $.each(data.racers, function (index, racer) {
+    var racerid = racer.racerid;
     var rows = table.find("tr");
     var tr;
     if (rows.length > index &&
@@ -85,17 +86,18 @@ function process_racer_list(data) {
         .on('change', function() { update_print_button(); });
       $("<td></td>").appendTo(tr);  // Car number
       $("<td></td>").appendTo(tr);  // Racer name
-      $("<td class='photo-column'></td>").appendTo(tr).append("<img></img>");
+      $("<td class='photo-column'></td>").appendTo(tr)
+        .append($("<img/>").css('max-height', /* RENDER_LISTVIEW */ 80));
       tr.on("click", on_tr_click);
     }
     var cells = tr.find("td");
-    $(cells[1]).text(racer.getAttribute("carnumber"));
-    $(cells[2]).text(racer.getAttribute("firstname") + " " + racer.getAttribute("lastname"));
-    $(cells[3]).find("img").prop("src", racer.getAttribute("headshot"));
+    $(cells[1]).text(racer.carnumber);
+    $(cells[2]).text(racer.firstname + " " + racer.lastname);
+    $(cells[3]).find("img").prop("src", racer.headshot);
   });
 
   // Chop off any extra rows, but first preserve checkbox settings for any moved racers
-  var condemned = table.find("tr").slice(racers.length);
+  var condemned = table.find("tr").slice(data.racers.length);
   condemned.find("input:checkbox").each(function() {
     $("input:checkbox[data-racerid='" + $(this).attr('data-racerid') + "']")
       .prop('checked', $(this).prop('checked'));
@@ -106,8 +108,8 @@ function process_racer_list(data) {
 // Returns a table mapping awardtypeid's (as strings) to awardtype names
 function make_award_types(data) {
   var awardtypes = {};
-  $.each(data.getElementsByTagName('awardtype'), function(index, awardtype) {
-    awardtypes[awardtype.getAttribute('awardtypeid')] = awardtype.getAttribute('awardtype');
+  $.each(data['award-types'], function(index, awardtype) {
+    awardtypes[awardtype.awardtypeid] = awardtype.awardtype;
   });
   return awardtypes;
 }
@@ -117,11 +119,11 @@ function make_award_types(data) {
 //   'r' + rankid -> rank name
 function make_classes_and_ranks(data) {
   var classes_and_ranks = {};
-  $.each(data.getElementsByTagName('class'), function(index, cl) {
-    classes_and_ranks['c' + cl.getAttribute('classid')] = cl.getAttribute('name');
-  });
-  $.each(data.getElementsByTagName('rank'), function(index, rank) {
-    classes_and_ranks['r' + rank.getAttribute('rankid')] = rank.getAttribute('name');
+  $.each(data.classes, function(index, cl) {
+    classes_and_ranks['c' + cl.classid] = cl.name;
+    $.each(cl.subgroups, function(index, rank) {
+      classes_and_ranks['r' + rank.rankid] = rank.name;
+    });
   });
   return classes_and_ranks;
 }
@@ -129,10 +131,9 @@ function make_classes_and_ranks(data) {
 function process_award_list(data) {
   var awardtypes = make_award_types(data);
   var classes_and_ranks = make_classes_and_ranks(data);
-  var awards = data.getElementsByTagName('award');
   var table = $("div#subject-awards table");
-  $.each(awards, function(index, award) {
-    var awardid = award.getAttribute('awardid');
+  $.each(data.awards, function(index, award) {
+    var awardid = award.awardid;
     var rows = table.find("tr");
     var tr;
     if (rows.length > index &&
@@ -158,11 +159,11 @@ function process_award_list(data) {
       $("<td></td>").appendTo(tr);  // Recipient
     }
     var cells = tr.find("td");
-    tr.find(".awardname").text(award.getAttribute('awardname'));
-    tr.find(".awardtype").text(awardtypes[award.getAttribute('awardtypeid')]);
-    tr.find(".classname").text(classes_and_ranks['c' + award.getAttribute('classid')]);
+    tr.find(".awardname").text(award.awardname);
+    tr.find(".awardtype").text(awardtypes[award.awardtypeid]);
+    tr.find(".classname").text(classes_and_ranks['c' + award.classid]);
     // TODO ranks
-    $(cells[3]).text(award.getAttribute('firstname') + ' ' + award.getAttribute('lastname'));
+    $(cells[3]).text(award.firstname + ' ' + award.lastname);
   });
 }
 

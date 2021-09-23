@@ -1,119 +1,77 @@
-<coordinator_poll>
-<?php
- // $_GET['roundid'] and $_GET['heat'] identify the "current" heat as the
+<?php // $_GET['roundid'] and $_GET['heat'] identify the "current" heat as the
  // coordinator page sees it.
 
 require_once('inc/aggregate_round.inc');
-require_once('inc/classes-xml.inc');
-require_once('inc/current-heat.inc');
-require_once('inc/current-racers.inc');
-require_once('inc/heat-results.inc');
-require_once('inc/last-heat.inc');
-require_once('inc/playlist.inc');
-require_once('inc/remote-start.inc');
-require_once('inc/rounds.inc');
-require_once('inc/schema_version.inc');
-require_once('inc/timer-state-xml.inc');
+require_once('inc/json-classes.inc');
+require_once('inc/json-current-heat.inc');
+require_once('inc/json-current-racers.inc');
+require_once('inc/json-heat-results.inc');
+require_once('inc/json-last-heat.inc');
+require_once('inc/json-replay.inc');
+require_once('inc/json-rounds.inc');
+require_once('inc/json-timer-state.inc');
+require_once('inc/name-mangler.inc');
 
 $now_running = get_running_round();
-emit_current_heat($now_running);
-emit_current_racers($now_running, FULL_NAME, /* photos */ false);
-emit_timer_state();
-?>
-<?php /* Replay */
-require_once('inc/replay.inc');
-$replay = get_replay();
-if ($replay['state'] == REPLAY_NOT_CONNECTED) {
-  $msg = 'NOT CONNECTED';
-  $icon = 'img/status/not_connected.png';
-} else if ($replay['state'] == REPLAY_CONNECTED) {
-  $msg = $replay['reported_status'].' ('.(time() - $replay['last_contact']).' sec.)';
-  $icon = 'img/status/ok.png';
-} else {
-  $msg = 'TROUBLE: '.$replay['trouble'];
-  $icon = 'img/status/trouble.png';
-}
-echo '<replay-state'
-    .' last_contact="'.$replay['last_contact'].'"'
-    .' state="'.$replay['state'].'"'
-    .' icon="'.$icon.'"'
-    .' connected="'.($replay['state'] != REPLAY_NOT_CONNECTED).'"'
-    .'>';
-echo $msg;
-echo "</replay-state>\n";
+json_out('current-heat', json_current_heat($now_running));
+json_out('racers', json_current_racers($now_running, FULL_NAME, /* photos */ false));
+json_out('timer-state', json_timer_state());
+json_out('replay-state', json_replay());
+json_out('last-heat', json_last_heat());
 
-?>
-<?php  // last_heat
-echo last_heat_xml_element()."\n";
+json_out('heat-results',
+         json_heat_results(isset($_GET['roundid']) ? $_GET['roundid'] : '0',
+                           isset($_GET['heat']) ? $_GET['heat'] : '1'));
 
-$roundid = isset($_GET['roundid']) ? $_GET['roundid'] : '0';
-$heat = isset($_GET['heat']) ? $_GET['heat'] : '1';
-emit_heat_results($roundid, $heat);
+json_out('classes', json_all_classes());
+json_out('rounds', json_all_rounds($now_running));
 
-?>
-<?php  // Classes and Subgroups
-emit_all_classes();
+// Pre-defined aggregate classes that could be scheduled for racing.  Each
+// constituent must have raced, or, if an aggregate, itself be available for
+// scheduling.
+//
+// Work through aggregate constituents tc; an aggregate is ready if all its
+// racing constituents have raced: there are no unfinished RaceChart entries, or
+// there's just no Round for the class (non-racing aggregate).
 
-?>
-<?php // Rounds
+$nonracing_aggregates = nonracing_aggregate_classids();
 
-$next_roundid = false;
-if (isset($now_running['roundid'])) {
-  $q = playlist_entry_for($now_running['roundid']);
-  if ($q) {
-    $q = playlist_entry_after($q['seq']);
-  } else {
-    $q = first_playlist_entry();
-  }
-  if ($q) {
-    $next_roundid = find_roundid($q['classid'], $q['round']);
-  }
-}
-
-$rounds = all_rounds_with_counts();
-
-foreach ($rounds as $round) {
-    $roundid = $round['roundid'];
-
-    echo '<round roundid="'.$roundid.'"'
-            .' classid="'.$round['classid'].'"'
-            .' class="'.htmlspecialchars($round['class'], ENT_QUOTES, 'UTF-8').'"'
-            .' round="'.$round['round'].'"';
-    echo " aggregate=\"$round[aggregate]\"";
-    echo " roster_size=\"$round[roster_size]\"";
-    echo " passed=\"$round[passed]\"";
-    echo " unscheduled=\"$round[unscheduled]\"";
-    echo " heats_scheduled=\"$round[heats_scheduled]\"";
-    echo " heats_run=\"$round[heats_run]\"";
-    if ($round['roundid'] == $next_roundid) {
-      echo " next_round=\"true\"";
-    }
-    echo '>'.htmlspecialchars($round['roundname'], ENT_QUOTES, 'UTF-8')."</round>\n";
-}
-
-// Pre-defined aggregate classes that could be scheduled for racing:
-foreach (aggregate_classes() as $agg_class) {
-  $ready_to_race =
-      read_single_value('SELECT COUNT(*) FROM Rounds WHERE classid = :classid',
-                        array(':classid' => $agg_class['classid'])) == 0;
-  if ($ready_to_race) {
-    foreach ($agg_class['constituents'] as $classid) {
-      if (read_single_value('SELECT COUNT(*) FROM RaceChart'
-                            .' JOIN Rounds'
-                            .' ON RaceChart.roundid = Rounds.roundid'
-                            .' WHERE Rounds.classid = :classid'
-                            .'  AND (completed IS NOT NULL AND completed <> \'\')',
-                            array(':classid' => $classid))
-          == 0) {
-        $ready_to_race = false;
+$aggregates_ready_to_populate = array();
+// $aggregates_ready_to_populate is what gets sent to the dashboard.
+// $classids_ready_to_populate is the classids (only) from those aggregates.
+$classids_ready_to_populate = array();
+do {
+  $repeat = false;
+  foreach (aggregate_classes() as $agg_class) {
+    if (in_array($agg_class['classid'], $nonracing_aggregates) &&
+        !in_array($agg_class['classid'], $classids_ready_to_populate)) {
+      // $agg_class has no racing rounds (yet), but might be ready to build a roster
+      $ready_to_populate = true;
+      foreach ($agg_class['constituents'] as $classid) {
+        if (!in_array($classid, $classids_ready_to_populate) &&
+            read_single_value('SELECT COUNT(*) FROM RaceChart'
+                              .' JOIN Rounds'
+                              .' ON RaceChart.roundid = Rounds.roundid'
+                              .' WHERE Rounds.classid = :classid'
+                              .'  AND (completed IS NULL OR completed = \'\')',
+                              array(':classid' => $classid)) > 0) {
+          $ready_to_populate = false;
+          break;
+        }
+      }
+      if ($ready_to_populate) {
+        $classids_ready_to_populate[] = $agg_class['classid'];
+        $aggregates_ready_to_populate[] = array(
+          'classid' => $agg_class['classid'],
+          'by-subgroup' => empty($agg_class['rankids']) ? false : true,
+          'class' => $agg_class['class']);
+        $repeat = true;
       }
     }
   }
-  if ($ready_to_race) {
-    echo "<ready-aggregate classid=\"$agg_class[classid]\">";
-    echo htmlspecialchars($agg_class['class'], ENT_QUOTES, 'UTF-8');
-    echo "</ready-aggregate>\n";
-  }
-}
+} while ($repeat);
+
+json_out('ready-aggregate', $aggregates_ready_to_populate);
+
+
 ?>
-</coordinator_poll>

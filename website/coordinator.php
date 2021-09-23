@@ -4,6 +4,8 @@ require_once('inc/data.inc');
 require_once('inc/banner.inc');
 require_once('inc/authorize.inc');
 require_permission(SET_UP_PERMISSION);  // TODO: What's the correct permission?
+
+$warn_no_timer = warn_no_timer();
 ?><!DOCTYPE html>
 <html>
 <head>
@@ -55,7 +57,7 @@ var g_use_subgroups = <?php echo use_subgroups() ? "true" : "false"; ?>;
       </div>
 
       <input type="button" id="manual_results_button" value="Manual Results"
-        onclick="show_manual_results_modal()" />
+        onclick="on_manual_results_button_click(<?php echo !$warn_no_timer ? "true" : "false"; ?>)" />
 
       <div id="skip_heat_button" class="button_link" onclick="handle_skip_heat_button()">
         <img src="img/right-white-60.png"/>
@@ -76,7 +78,7 @@ var g_use_subgroups = <?php echo use_subgroups() ? "true" : "false"; ?>;
   </div>
 
   <div class="control_group timer_control_group">
-  <?php if (!warn_no_timer()) { ?>
+  <?php if (!$warn_no_timer) { ?>
     <p>Not monitoring timer state</p>
    <?php } else { ?>
     <div class="status_icon">
@@ -84,7 +86,7 @@ var g_use_subgroups = <?php echo use_subgroups() ? "true" : "false"; ?>;
     </div>
 
     <div id='timer-test' class="block_buttons">
-      <a class='button_link' href='timer.php'>Test</a>
+      <a class='button_link' href='timer-test.php'>Test</a>
     </div>
 
     <h3>Timer Status</h3>

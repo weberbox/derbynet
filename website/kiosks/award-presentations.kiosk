@@ -8,6 +8,12 @@
 <?php require('inc/stylesheet.inc'); ?>
 <link rel="stylesheet" type="text/css" href="css/kiosks.css"/>
 <link rel="stylesheet" type="text/css" href="css/award-presentations-kiosk.css"/>
+<script type="text/javascript">
+ var g_confetti = <?php
+    $confetti = isset($_GET['confetti']) ? $_GET['confetti'] : true;
+    echo $confetti ? "true" : "false";
+ ?>;
+</script>
 <script type="text/javascript" src="js/award-presentations-kiosk.js"></script>
 </head>
 <body>
@@ -21,8 +27,7 @@
   <div class="reveal" id="award-racer-text">
     <p class="award-racer"><span class="car-number" id="carnumber"></span></p>
     <p class="award-racer">
-      <span class="firstname" id="firstname"></span>
-      <span class="lastname" id="lastname"></span>
+      <span class="recipient" id="recipient"></span>
     </p>
     <p class="award-racer"><span class="car-name" id="carname"></span></p>
     <p class="award-racer"><span class="subgroup" id="subgroup"></span></p>
@@ -37,5 +42,6 @@
   </div>
 </div>
 
+<?php require('inc/ajax-failure.inc'); ?>
 </body>
 </html>

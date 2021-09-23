@@ -1,26 +1,45 @@
 package org.jeffpiazza.derby;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import org.jeffpiazza.derby.gui.TimerGui;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
 // From a server address, tries to make first contact with the web server by
 // asking about the available roles.
 //
-// Usage: Create a new RoleFinder, spawn a new thread to run findRoles().
-// Cancel asynchronously by calling cancel(),
-// otherwise wait until call to gui.rolesComplete().
 public class RoleFinder {
+  public interface RoleFinderClient {
+    public void rolesFound(ArrayList<String> roles, ClientSession session);
+    // roleFinderFailed is responsible for logging, too.
+    public void roleFinderFailed(String reason);
+  }
+
+  public static RoleFinder start(final String serverAddress,
+                                 RoleFinderClient client) {
+    final RoleFinder roleFinder = new RoleFinder(serverAddress, client);
+    (new Thread() {
+      @Override
+      public void run() {
+        roleFinder.findRoles();
+      }
+    }).start();
+    return roleFinder;
+  }
+
   // serverAddress and session are fixed for the lifetime of the RoleFinder,
   // but gui may be set to null by a cancel() call from another thread.
-  String serverAddress;
-  TimerGui gui;
-  ClientSession session;
+  private String serverAddress;
+  private RoleFinderClient client;
+  private ClientSession session;
 
-  public RoleFinder(String serverAddress, TimerGui timerGui) {
+  private RoleFinder(String serverAddress, RoleFinderClient client) {
     this.serverAddress = serverAddress;
-    this.gui = timerGui;
+    this.client = client;
     this.session = new ClientSession(serverAddress);
   }
 
@@ -33,58 +52,53 @@ public class RoleFinder {
   }
 
   public synchronized void cancel() {
-    this.gui = null;
+    this.client = null;
   }
 
   // Spawn a new thread to run RoleFinder.findRoles.
   // On success, calls gui.addRole as needed, then gui.rolesComplete(true).
   // On failure, calls gui.rolesComplete(false)
   public void findRoles() {
-    boolean succeeded = false;
+    ArrayList<String> roles = new ArrayList<String>();
     try {
-      Element roles_result = session.doQueryWithVariations("roles");
+      JSONObject roles_result = session.doJsonQueryWithVariations("role.list");
       if (roles_result == null) {
-        gui.roleFinderFailed(
+        client.roleFinderFailed(
             "No response, or response not understood (likely wrong URL)");
       } else {
         synchronized (this) {
           serverAddress = session.getBaseUrl();
-          gui.setUrl(serverAddress);
         }
-        NodeList roles = roles_result.getElementsByTagName("role");
-        if (roles.getLength() == 0) {
-          NodeList titles = roles_result.getElementsByTagName("title");
-          if (titles.getLength() == 1 && titles.item(0).getFirstChild().
-              getNodeValue().contains("Set-Up")) {
-            // Redirected to the set-up page, because there's no database
-            gui.roleFinderFailed("Set up the server database before proceeding");
-          } else {
-            gui.roleFinderFailed("No roles provided in roles query");
-          }
+        JSONArray rolesj = roles_result.getJSONArray("roles");
+        if (rolesj.length() == 0) {
+          client.roleFinderFailed(
+              "Check the database; no roles provided in roles query");
         } else {
-          for (int i = 0; i < roles.getLength(); ++i) {
-            Element role = (Element) roles.item(i);
-            if (!role.getAttribute("timer_message").isEmpty()) {
-              gui.addRole(role.getTextContent());
-              succeeded = true;
-            }
-            if (!role.getAttribute("race_control").isEmpty()) {
-              gui.addRole(role.getTextContent());
-              succeeded = true;
+          for (int i = 0; i < rolesj.length(); ++i) {
+            JSONObject role = rolesj.getJSONObject(i);
+            if (role.optInt("timer-message", 0) != 0 ||
+                role.optInt("race-control", 0) != 0) {
+              roles.add(role.getString("name"));
             }
           }
-          if (!succeeded) {
-            gui.roleFinderFailed("Roles received, but none are suitable.");
+          if (roles.isEmpty()) {
+            client.roleFinderFailed("Roles received, but none are suitable.");
           }
         }
       }
+    } catch (JSONException je) {
+      client.roleFinderFailed(je.getMessage());
+      LogWriter.stacktrace(je);
+    } catch (ClientSession.HttpException he) {
+      client.roleFinderFailed(he.getBriefMessage());
+      LogWriter.info("RoleFinder failed: " + he.getMessage());
     } catch (IOException e) {
-      gui.roleFinderFailed(e.getMessage());
-      e.printStackTrace();  // TODO
+      client.roleFinderFailed(e.getMessage());
+      LogWriter.info("RoleFinder failed: " + e.getMessage());
     } finally {
       synchronized (this) {
-        if (succeeded && gui != null) {
-          gui.rolesComplete();
+        if (!roles.isEmpty() && client != null) {
+          client.rolesFound(roles, session);
         }
       }
     }

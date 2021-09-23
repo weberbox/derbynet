@@ -22,35 +22,34 @@ if [ $OK -eq 0 ]; then
     test_fails Anonymous index page
 fi
 
-curl_post action.php "action=kiosk.assign" | check_failure
+curl_postj action.php "action=kiosk.assign" | check_jfailure
 
-curl_post action.php "action=result.delete" | check_failure
-curl_post action.php "action=racer.edit" | check_failure
-curl_post action.php "action=result.write" | check_failure
-curl_post action.php "action=racer.import" | check_failure
+curl_postj action.php "action=result.delete" | check_jfailure
+curl_postj action.php "action=racer.edit" | check_jfailure
+curl_postj action.php "action=result.write" | check_jfailure
+curl_postj action.php "action=racer.import" | check_jfailure
 
-# curl_post action.php "action=login" | check_failure
-curl_post action.php "action=racer.new" | check_failure
-curl_post action.php "action=racer.pass" | check_failure
-curl_post action.php "action=photo" | check_failure
+# curl_postj action.php "action=role.login" | check_jfailure
+curl_postj action.php "action=racer.add" | check_jfailure
+curl_postj action.php "action=racer.pass" | check_jfailure
 # TODO Replay application registers itself without credentials, a security weakness.
 # curl_post action.php "action=register-replay" | check_failure
-curl_post action.php "action=replay-test" | check_failure
-curl_post action.php "action=schedule.reschedule" | check_failure
-curl_post action.php "action=schedule.generate" | check_failure
-curl_post action.php "action=heat.select" | check_failure
+curl_postj action.php "action=replay.test" | check_jfailure
+curl_postj action.php "action=schedule.reschedule" | check_jfailure
+curl_postj action.php "action=schedule.generate" | check_jfailure
+curl_postj action.php "action=heat.select" | check_jfailure
 curl_post action.php "action=timer-message" | check_failure
-curl_post action.php "action=award.xbs" | check_failure
+curl_postj action.php "action=award.xbs" | check_jfailure
 
 # Queries don't answer "<success/>" or "<failure/>", so there's really
-# nothing to check other than that they parse as XML.
-curl_get "action.php?query=class.list" > /dev/null
-curl_get "action.php?query=poll.coordinator" > /dev/null
-curl_get "action.php?query=kiosk.poll" > /dev/null
-curl_get "action.php?query=poll.kiosk.all" > /dev/null
-curl_get "action.php?query=roles"  > /dev/null
-curl_get "action.php?query=poll.ondeck" > /dev/null
-curl_get "action.php?query=poll.now-racing" > /dev/null
+# nothing to check other than that they parse as JSON.
+curl_getj "action.php?query=class.list" > /dev/null
+curl_getj "action.php?query=poll.coordinator" | jq . > /dev/null
+curl_getj "action.php?query=poll.kiosk" > /dev/null
+curl_getj "action.php?query=poll.kiosk.all" > /dev/null
+curl_getj "action.php?query=roles.list"  > /dev/null
+curl_getj "action.php?query=poll.ondeck" > /dev/null
+curl_getj "action.php?query=poll&values=" > /dev/null
 
 cat >coordinator.index.tmp <<EOF
           <a class="button_link before_button" href="setup.php">Set-Up</a>

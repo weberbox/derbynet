@@ -33,36 +33,45 @@ function preserve_autocrop_state() {
 
 // This executes when a checkbox for "Passed" is clicked.
 function handlechange_passed(cb, racer) {
-    // cb is the checkbox element, with name "passed-" plus the racer id, e.g., passed-1234
-    if (!cb.checked && !confirm("Are you sure you want to unregister " + racer + "?")) {
-	    cb.checked = true;
-	    return;
-    }
-    // 7 = length of "passed-" prefix
-    var racer = cb.name.substring(7);
-    var value = cb.checked ? 1 : 0;
+  // cb is the checkbox element, with name "passed-" plus the racer id, e.g., passed-1234
+  if (!cb.checked && !confirm("Are you sure you want to unregister " + racer + "?")) {
+	cb.checked = true;
+	return;
+  }
+  // 7 = length of "passed-" prefix
+  var racer = cb.name.substring(7);
+  var value = cb.checked ? 1 : 0;
 
-    $.ajax(g_action_url,
-           {type: 'POST',
-            data: {action: 'racer.pass',
-                   racer: racer,
-                   value: value},
-           });
+  $.ajax(g_action_url,
+         {type: 'POST',
+          data: {action: 'racer.pass',
+                 racer: racer,
+                 value: value},
+         });
 }
 
 // This executes when a checkbox for "Exclusively by Scout" is clicked.
 function handlechange_xbs(cb) {
-    // cb is the checkbox element, with name "xbs-" plus the racer id, e.g., xbs-1234
-    // 4 = length of "xbs-" prefix
-    var racer = cb.name.substring(4);
-    var value = cb.checked ? 1 : 0;
+  // cb is the checkbox element, with name "xbs-" plus the racer id, e.g., xbs-1234
+  // 4 = length of "xbs-" prefix
+  var racer = cb.name.substring(4);
+  var value = cb.checked ? 1 : 0;
 
-    $.ajax(g_action_url,
-           {type: 'POST',
-            data: {action: 'award.xbs',
-                   racer: racer,
-                   value: value},
-           });
+  $.ajax(g_action_url,
+         {type: 'POST',
+          data: {action: 'award.xbs',
+                 racer: racer,
+                 value: value},
+         });
+}
+
+function on_edit_division_change(reorder_modal) {
+  var edit_division = $("#edit_division");
+  if (edit_division.val() < 0) {
+    edit_division.val(edit_division.find('option').eq(0).attr('value'));
+    close_modal_leave_background(edit_division);
+    show_modal(reorder_modal);
+  }
 }
 
 function show_edit_racer_form(racerid) {
@@ -71,7 +80,8 @@ function show_edit_racer_form(racerid) {
   var car_no = $('#car-number-' + racerid).text();
   var car_name = $('#car-name-' + racerid).text();
 
-  var rankid = $('#class-' + racerid).attr('data-rankid');
+  var class_name = $('#class-' + racerid).text();
+  var rank_name = $('#rank-' + racerid).text();
 
   $("#edit_racer").val(racerid);
 
@@ -81,21 +91,27 @@ function show_edit_racer_form(racerid) {
   $("#edit_carno").val(car_no);
   $("#edit_carname").val(car_name);
 
-  var edit_rank = $("#edit_rank");
-  edit_rank.val(rankid);
-  // I think it's a bug in jquery-mobile that an explicit change
-  // event is required; setting the val above should be sufficient
-  // to cause an update.
-  edit_rank.change();
+  $("#edit_division").val($('#div-' + racerid).attr('data-divisionid'));
+  $("#edit_division").change();
 
-  $("#eligible").prop("checked", $('#lastname-' + racerid).attr("data-exclude") == 0);
+  if (false) { // TODO
+    var edit_rank = $("#edit_rank");
+    // TODO drop rank_name unless use_subgroups
+    edit_rank.val(class_name + ' / ' + rank_name)
+    // I think it's a bug in jquery-mobile that an explicit change
+    // event is required; setting the val above should be sufficient
+    // to cause an update.
+    edit_rank.change();
+  }
+
+  $("#eligible").prop("checked", ! $('#lastname-' + racerid).prop("data-exclude"));
   $("#eligible").trigger("change", true);
 
   $("#delete_racer_extension").removeClass('hidden');
 
   show_modal("#edit_racer_modal", function(event) {
-      handle_edit_racer();
-      return false;
+    handle_edit_racer();
+    return false;
   });
 
   $("#edit_carno").focus();
@@ -118,8 +134,8 @@ function show_new_racer_form() {
   $("#delete_racer_extension").addClass('hidden');
   
   show_modal("#edit_racer_modal", function(event) {
-      handle_edit_racer();
-      return false;
+    handle_edit_racer();
+    return false;
   });
 }
 
@@ -133,9 +149,13 @@ function handle_edit_racer() {
   var new_carno = $("#edit_carno").val().trim();
   var new_carname = $("#edit_carname").val().trim();
 
-  var rank_picker = $("#edit_rank");
-  var new_rankid = rank_picker.val();
-
+  if (false) {
+    var rank_picker = $("#edit_rank");
+    var new_rankid = rank_picker.val();
+  }
+  var new_div_id = $("#edit_division").val();
+  var new_div_name = $('[value="' + new_div_id + '"]', $("#edit_division")).text();
+  
   var rank_option = $('[value="' + new_rankid + '"]', rank_picker);
   var new_classname = rank_option.attr('data-class');
   var new_rankname = rank_option.attr('data-rank');
@@ -144,48 +164,40 @@ function handle_edit_racer() {
 
   $.ajax(g_action_url,
          {type: 'POST',
-          data: {action: racerid >= 0 ? 'racer.edit' : 'racer.new',
+          data: {action: racerid >= 0 ? 'racer.edit' : 'racer.add',
                  racer: racerid,
                  firstname: new_firstname,
                  lastname: new_lastname,
                  carno: new_carno,
                  carname: new_carname,
-                 rankid: new_rankid,
+                 divisionid: new_div_id,
                  exclude: exclude},
-            success: function(data) {
-                var warnings = data.getElementsByTagName('warning');
-                if (warnings && warnings.length > 0) {
-                  window.alert("WARNING: " + warnings[0].childNodes[0].nodeValue);
-                }
-                var new_row_elements = data.getElementsByTagName('new-row');
-                if (new_row_elements.length > 0) {
-	                tb = $(".main_table tbody");
-                    for (var j = 0; j < new_row_elements.length; ++j) {
-                        var tr_elements = new_row_elements[j].getElementsByTagName('tr');
-                        for (var jj = 0; jj < tr_elements.length; ++jj) {
-                            var new_tr = document.createElement('tr');
-	                        tb.get(0).appendChild(new_tr);
-                            new_tr.outerHTML = (new XMLSerializer()).serializeToString(tr_elements[jj]);
-                            tb.trigger('create');
-                        }
-                    }
-                } else {
-                    $("#firstname-" + racerid).text(new_firstname);
-                    var ln = $("#lastname-" + racerid);
-                    ln.text(new_lastname);
-                    ln.attr("data-exclude", exclude);
-                    ln.parents('tr').toggleClass('exclude-racer', exclude == 1);
-                    $("#car-number-" + racerid).text(new_carno);
-                    $("#car-name-" + racerid).text(new_carname);
+          success: function(data) {
+            if (data.hasOwnProperty('warnings')) {
+              window.alert("WARNING: " + data.warnings[0]);
+            }
+            if (data.hasOwnProperty('new-row')) {
+              var row = addrow0(data['new-row']);
+              flipswitch(row.find('input[type="checkbox"].flipswitch'));
+            } else {
+              $("#firstname-" + racerid).text(new_firstname);
+              var ln = $("#lastname-" + racerid);
+              ln.text(new_lastname);
+              ln.attr("data-exclude", exclude);
+              ln.parents('tr').toggleClass('exclude', exclude == 1);
+              $("#car-number-" + racerid).text(new_carno);
+              $("#car-name-" + racerid).text(new_carname);
+              console.log('Changing division to ' + new_div_name);
+              $("#div-" + racerid).attr('data-divisionid', new_div_id).text(new_div_name);
 
-                    $('#class-' + racerid).attr('data-rankid', new_rankid);
-                    $('#class-' + racerid).text(new_classname);
-                    $('#rank-' + racerid).text(new_rankname);
-                }
+              $('#class-' + racerid).attr('data-rankid', new_rankid);
+              $('#class-' + racerid).text(new_classname);
+              $('#rank-' + racerid).text(new_rankname);
+            }
 
-                sort_checkin_table();
-            },
-           });
+            sort_checkin_table();
+          },
+         });
 }
 
 function handle_delete_racer() {
@@ -211,7 +223,7 @@ function handle_delete_racer() {
 
 function show_bulk_form() {
   show_modal("#bulk_modal", function(event) {
-      return false;
+    return false;
   });
 }
 
@@ -251,11 +263,11 @@ function bulk_numbering() {
                    start: $("#bulk_numbering_start").val(),
                    renumber: $("#renumber").is(':checked') ? 1 : 0},
            });
-                  
+    
     return false;
   });
 }
-  
+
 function bulk_eligibility() {
   close_modal("#bulk_modal");
   $("#bulk_details_title").text("Bulk Eligibility");
@@ -272,15 +284,15 @@ function bulk_eligibility() {
                    who: $("#bulk_who").val(),
                    value: $("#bulk_eligible").is(':checked') ? 1 : 0},
            });
-                  
+    
     return false;
   });
 }
 
 function disable_preview(msg) {
   var preview = $("#preview").html('<h2>Webcam Disabled</h2>')
-    .css({'border': '2px solid black',
-          'background': '#d2d2d2'});
+      .css({'border': '2px solid black',
+            'background': '#d2d2d2'});
   $("<p></p>").text(msg).css({'font-size': '18px'}).appendTo(preview);
 
   if (window.location.protocol == 'http:') {
@@ -336,29 +348,16 @@ Dropzone.options.photoDrop = {
   },
 };
 
-// Re-writes the global g_cameras
-async function enumerate_cameras() {
-  g_cameras = new Array();
-  await navigator.mediaDevices.enumerateDevices()
-  .then(function(devices) {
-    devices.forEach(function(device) {
-      if (device.kind == "videoinput") {
-        g_cameras.push(device.deviceId);
-      }
-    });
-  });
-}
-
 function setup_webcam() {
   var settings = {
-	  width: g_width,
-	  height: g_height,
-	  dest_width: g_width,
-	  dest_height: g_height,
-	  crop_width: g_width,
-	  crop_height: g_height,
+	width: g_width,
+	height: g_height,
+	dest_width: g_width,
+	dest_height: g_height,
+	crop_width: g_width,
+	crop_height: g_height,
   };
-  if (g_cameraIndex < g_cameras.length) {
+  if (g_cameraIndex < g_cameras.length && g_cameras[g_cameraIndex]) {
 	settings['constraints'] = {
 	  deviceId: {exact: g_cameras[g_cameraIndex]}
 	};
@@ -366,19 +365,24 @@ function setup_webcam() {
   Webcam.set(settings);
 }
 
-async function handle_switch_camera() {
-  await enumerate_cameras();
-  g_cameraIndex++;
-  if (g_cameraIndex >= g_cameras.length) {
-    g_cameraIndex = 0;
+window.addEventListener('orientationchange', function() {
+  if (screen.width < screen.height) {
+    g_width = 480;
+    g_height = 640;
+  } else {
+    g_width = 640;
+    g_height = 480;
   }
 
   Webcam.reset();
   setup_webcam();
   Webcam.attach('#preview');
-}
+});
 
-async function show_photo_modal(racerid, repo) {
+// ***********************
+// Original definition, minus the enumerate_cameras call.  On modern browsers,
+// this gets redefined, below, to use ES6-only features.
+function show_photo_modal(racerid, repo) {
   var firstname = $('#firstname-' + racerid).text();
   var lastname = $('#lastname-' + racerid).text();
   $("#racer_photo_name").text(firstname + ' ' + lastname);
@@ -395,7 +399,7 @@ async function show_photo_modal(racerid, repo) {
   show_modal("#photo_modal", function() {
     preserve_autocrop_state();
     take_snapshot(racerid, repo, lastname + '-' + firstname);
-      return false;
+    return false;
   });
 
   if (screen.width < screen.height) {
@@ -405,25 +409,10 @@ async function show_photo_modal(racerid, repo) {
 
   arm_webcam_dialog();
 
-  await enumerate_cameras();
   Webcam.reset();
   setup_webcam();
   Webcam.attach('#preview');
 }
-
-window.addEventListener('orientationchange', function() {
-  if (screen.width < screen.height) {
-    g_width = 480;
-    g_height = 640;
-  } else {
-    g_width = 640;
-    g_height = 480;
-  }
-
-  Webcam.reset();
-  setup_webcam();
-  Webcam.attach('#preview');
-});
 
 function show_racer_photo_modal(racerid) {
   show_photo_modal(racerid, 'head');
@@ -518,49 +507,54 @@ function handle_sorting_event(event) {
 }
 
 function sorting_key(row) {
-  if (g_order == 'class') {
+  if (g_order == 'division') {
+    // division sortorder, lastname, firstname
+    return [parseInt(row.querySelector('[data-div-sortorder]').getAttribute('data-div-sortorder')),
+            row.getElementsByClassName('sort-lastname')[0].innerHTML,
+            row.getElementsByClassName('sort-firstname')[0].innerHTML]
+  } else if (g_order == 'class') {
     // rankseq, lastname, firstname
     return [parseInt(row.querySelector('[data-rankseq]').getAttribute('data-rankseq')),
             row.getElementsByClassName('sort-lastname')[0].innerHTML,
             row.getElementsByClassName('sort-firstname')[0].innerHTML]
   } else if (g_order == 'car') {
-      // carnumber (numeric), lastname, firstname
-      return [parseInt(row.getElementsByClassName('sort-car-number')[0].innerHTML),
-              row.getElementsByClassName('sort-lastname')[0].innerHTML,
-              row.getElementsByClassName('sort-firstname')[0].innerHTML]
+    // carnumber (numeric), lastname, firstname
+    return [parseInt(row.getElementsByClassName('sort-car-number')[0].innerHTML),
+            row.getElementsByClassName('sort-lastname')[0].innerHTML,
+            row.getElementsByClassName('sort-firstname')[0].innerHTML]
   } else /* 'name' */ {
-      // lastname, firstname
-      return [row.getElementsByClassName('sort-lastname')[0].innerHTML,
-              row.getElementsByClassName('sort-firstname')[0].innerHTML]
+    // lastname, firstname
+    return [row.getElementsByClassName('sort-lastname')[0].innerHTML,
+            row.getElementsByClassName('sort-firstname')[0].innerHTML]
   }
 }
 
 function sort_checkin_table() {
-	row_array = [];
-    rows = $(".main_table tbody").get(0).getElementsByTagName('tr');
+  row_array = [];
+  rows = $("#main_tbody").get(0).getElementsByTagName('tr');
 
-	for (var j = 0; j < rows.length; ++j) {
-	    row_array[row_array.length] = [sorting_key(rows[j]), rows[j]];
-	}
+  for (var j = 0; j < rows.length; ++j) {
+	row_array[row_array.length] = [sorting_key(rows[j]), rows[j]];
+  }
 
-	row_array.sort(compare_first);
+  row_array.sort(compare_first);
 
-	tb = $(".main_table tbody").get(0);
+  tb = $("#main_tbody").get(0);
 
-	for (var j = 0; j < row_array.length; ++j) {
-        row_array[j][1].classList.remove('d' + (j & 1));
-        row_array[j][1].classList.add('d' + ((j + 1) & 1));
-	    tb.appendChild(row_array[j][1]);
-	}
+  for (var j = 0; j < row_array.length; ++j) {
+    row_array[j][1].classList.remove('d' + (j & 1));
+    row_array[j][1].classList.add('d' + ((j + 1) & 1));
+	tb.appendChild(row_array[j][1]);
+  }
 
-	delete row_array;
+  delete row_array;
 }
 
-// g_checkin_on_barcode is set in checkin.php with a value persisted in the PHP
+// g_action_on_barcode is set in checkin.php with a value persisted in the PHP
 // session for this user.
 $(function() {
-  $("#barcode-handling-radio-checkin").prop('checked', g_checkin_on_barcode);
-  $("#barcode-handling-radio-locate").prop('checked', !g_checkin_on_barcode);
+  $("input[name='barcode-handling']").prop('checked', false);
+  $("input[name='barcode-handling'][value='" + g_action_on_barcode + "']").prop('checked', 'checked');
   mobile_radio_refresh($("#barcode_settings_modal input[type=radio]"));
 
   $("#barcode_settings_modal input[type=radio]")
@@ -574,41 +568,41 @@ function handle_barcode_button_click() {
   });
 }
 function on_barcode_handling_change() {
-  g_checkin_on_barcode = $("#barcode-handling-radio-checkin").is(':checked');
+  g_action_on_barcode = $("input[name='barcode-handling']:checked").val();
   // Update the session to persist this choice
   $.ajax(g_action_url,
          {type: 'POST',
           data: {action: 'session.write',
-                 'session_barcode-checkin': g_checkin_on_barcode}
+                 'session_barcode-action': g_action_on_barcode}
          });
 
   return false;
 }
 
 function global_keypress(event) {
-    if ($(":focus").length == 0) {
-        $(document).off("keypress");  // We want future keypresses to go to the search form
-        $("#find-racer-text").focus();
-    }
+  if ($(":focus").length == 0) {
+    $(document).off("keypress");  // We want future keypresses to go to the search form
+    $("#find-racer-text").focus();
+  }
 }
 
 function remove_search_highlighting() {
-    $("span.found-racer").each(function() {
-        var p = $(this).parent();
-        $(this).contents().unwrap();
-        p.get()[0].normalize();
-    });
+  $("span.found-racer").each(function() {
+    var p = $(this).parent();
+    $(this).contents().unwrap();
+    p.get()[0].normalize();
+  });
 }
 
 function cancel_find_racer() {
-    $("#find-racer-text").val("");
-    $("#find-racer").removeClass("notfound");
-    $("#find-racer-index").data("index", 1).text(1);
-    $("#find-racer-count").text(0);
-    $("#find-racer-message").css({visibility: 'hidden'});
-    // TODO $("#find-racer").addClass("hidden");
-    remove_search_highlighting();
-    $(document).on("keypress", global_keypress);
+  $("#find-racer-text").val("");
+  $("#find-racer").removeClass("notfound");
+  $("#find-racer-index").data("index", 1).text(1);
+  $("#find-racer-count").text(0);
+  $("#find-racer-message").css({visibility: 'hidden'});
+  // TODO $("#find-racer").addClass("hidden");
+  remove_search_highlighting();
+  $(document).on("keypress", global_keypress);
 }
 
 function scroll_and_flash_row(row) {
@@ -639,6 +633,7 @@ function maybe_barcode(raw_search) {
   } else if (raw_search.startsWith('PWD') && raw_search.length == 6) {
     remove_search_highlighting();
     var cell = $("td[data-car-number=" + parseInt(raw_search.substr(3)) + "]");
+    var row = cell.closest('tr');
   } else {
     return false;
   }
@@ -648,9 +643,11 @@ function maybe_barcode(raw_search) {
   }
   
   scroll_and_flash_row(row);
+  console.log(g_action_on_barcode);
 
-  if (g_checkin_on_barcode) {
-    var racerid = row.attr('data-racerid');
+  var racerid = row.attr('data-racerid');
+  if (g_action_on_barcode == "locate") {
+  } else if (g_action_on_barcode == "checkin") {
     var cb = $("#passed-" + racerid);
 
     setTimeout(function() {
@@ -658,7 +655,14 @@ function maybe_barcode(raw_search) {
       // This will update the flipswitch and post the check-in.
       cb.change();
     }, 750);
+  } else {  // racer-photo, car-photo
+    var repo = g_action_on_barcode == "racer-photo" ? "head" : "car";
+    setTimeout(function() {
+      console.log('show_photo_modal ' + racerid + ', ' + repo);
+      show_photo_modal(racerid, repo);
+    }, 750);
   }
+
   return true;
 }
 
@@ -709,46 +713,153 @@ function find_racer() {
 }
 
 function scroll_to_nth_found_racer(n) {
-    var found = $("span.found-racer").eq(n - 1);
-    $("html, body").animate({scrollTop: found.offset().top - $(window).height() / 2}, 250);
+  var found = $("span.found-racer").eq(n - 1);
+  $("html, body").animate({scrollTop: found.offset().top - $(window).height() / 2}, 250);
+}
+
+// inc = 1 for next found racer, -1 for previous
+function next_or_previous_found_racer(inc) {
+  var count = $("#find-racer-index").data("index");
+  if (inc > 0 && count < $("span.found-racer").length) {
+    ++count;
+  } else if (inc < 0 && count > 1) {
+    --count;
+  } else {
+    return;
+  }
+
+  $("#find-racer-index").data("index", count).text(count);
+  scroll_to_nth_found_racer(count);
 }
 
 function intercept_arrow_key(event) {
-    switch (event.which) {
-    case 38:  // up
-        {
-            var count = $("#find-racer-index").data("index");
-            if (count > 1) {
-                --count;
-                $("#find-racer-index").data("index", count).text(count);
-                scroll_to_nth_found_racer(count);
-                event.preventDefault();
-                return;
-            }
-        }
-        break;
-    case 40: // down
-        {
-            var count = $("#find-racer-index").data("index");
-            if (count < $("span.found-racer").length) {
-                ++count;
-                $("#find-racer-index").data("index", count).text(count);
-                scroll_to_nth_found_racer(count);
-                event.preventDefault();
-                return;
-            }
-        }
-        break;
-    }
+  switch (event.which) {
+  case 38:  // up
+    next_or_previous_found_racer(-1);
+    event.preventDefault();
+    break;
+  case 40: // down
+    next_or_previous_found_racer(+1);
+    event.preventDefault();
+    break;
+  case 9:  // tab or shift-tab
+    next_or_previous_found_racer(event.shiftKey ? -1 : +1);
+    event.preventDefault();
+    break;
+  case 27:  // esc
+    cancel_find_racer();
+    event.preventDefault();
+    break;
+  }
 }
 
 $(function() {
-    $(document).on("keypress", global_keypress);
-    $("#find-racer-text").on("input", find_racer)
-                         .on("keydown", intercept_arrow_key);
-    // jquery mobile would add a distracting "blue glow" around the input form
-    // after the text input receives focus.  Ugh.
+  $(document).on("keypress", global_keypress);
+  $("#find-racer-text").on("input", find_racer)
+    .on("keydown", intercept_arrow_key);
+  // jquery mobile would add a distracting "blue glow" around the input form
+  // after the text input receives focus.  Ugh.
   $("#find-racer-text").off('focus');
 
   $("thead a[data-order]").on('click', handle_sorting_event);
 });
+
+
+// TODO We might be in a better position to know the row number (and parity)
+// than the server (which sends rowno).
+function make_table_row(racer, use_groups, use_subgroups, xbs) {
+  var tr = $('<tr/>').attr('data-racerid', racer.racerid)
+      .addClass('d' + (racer.rowno & 1))
+      .toggleClass('den_scheduled', racer.denscheduled)
+      .toggleClass('exclude', racer.exclude);
+  tr.append($('<td>')
+            .append('<input type="button" class="white-button" value="Change"' +
+                    ' onclick="show_edit_racer_form(' + racer.racerid + ')"/>'));
+
+  tr.append($('<td>')
+            .attr('id', 'div-' + racer.racerid)
+            .attr('data-divisionid', racer.divisionid)
+            .attr('data-div-sortorder', racer.division_sortorder)
+            .text(racer.division));
+  
+  if (use_groups) {
+    tr.append($('<td/>')
+              .attr('id', 'class-' + racer.racerid)
+              .attr('data-rankid', racer.rankid)
+              .attr('data-rankseq', racer.rankseq)
+              .text(racer.class));
+  }
+
+  if (use_subgroups) {
+    tr.append($('<td/>').attr('id', 'rank-' + racer.racerid)
+              .text(racer.rank));
+  }
+
+  tr.append($('<td class="sort-car-number"/>')
+            .attr('data-car-number', racer.carnumber)
+            .attr('id', 'car-number-' + racer.racerid)
+            .text(racer.carnumber));
+
+  tr.append($('<td/>').attr('id', 'photo-' + racer.racerid)
+            .append($('<a href="javascript:show_racer_photo_modal(' + racer.racerid + ')"/>')
+                    .append($('<img class="checkin-photo" data-repo="head"/>')
+                            .attr('src', racer.headshot)))
+            .append($('<a href="javascript:show_car_photo_modal(' + racer.racerid + ')"/>')
+                    .append($('<img class="checkin-photo" data-repo="car"/>')
+                            .attr('src', racer.carphoto))));
+
+  tr.append($('<td class="sort-lastname"/>')
+            .attr('id', 'lastname-' + racer.racerid)
+            .attr('data-exclude', racer.exclude)
+            .text(racer.lastname));
+  tr.append($('<td class="sort-firstname"/>')
+            .attr('id', 'firstname-' + racer.racerid)
+            .text(racer.firstname));
+  tr.append($('<td/>')
+            .attr('id', 'car-name-' + racer.racerid)
+            .text(racer.carname));
+
+  var checkin = $('<td class="checkin-status"/>').appendTo(tr);
+  if (racer.scheduled) {
+    if (racer.passed) {
+      checkin.text('Racing');
+    } else {
+      checkin.text('Scheduled but not passed');
+    }
+  } else {
+    checkin.append($('<label/>')
+                   .attr('for', 'passed-' + racer.racerid)
+                   .text('Checked In?'));
+    checkin.append('<br/>');
+    checkin.append($('<input type="checkbox" class="flipswitch"/>')
+                   .attr('id', 'passed-' + racer.racerid)
+                   .attr('name', 'passed-' + racer.racerid)
+                   .prop('checked', racer.passed)
+                   // prop onchange doesn't seem to allow a string, but attr does
+                   .attr('onchange', 'handlechange_passed(this, ' +
+                         JSON.stringify(racer.firstname + ' ' + racer.lastname) +
+                         ')'));
+    if (racer.denscheduled) {
+      checkin.append(' Late!');
+    }
+  }
+
+  if (xbs) {
+    tr.append($('<td/>')
+              .append($('<label/>')
+                      .attr('for', 'xbs-' + racer.racerid)
+                      .text(xbs + '?'))
+              .append($('<input type="checkbox" class="flipswitch"/>')
+                      .attr('name', 'xbs-' + racer.racerid)
+                      .prop('checked', racer.xbs)
+                      .attr('data-on-text', 'Yes')
+                      .attr('data-off-text', 'No')
+                      .attr('onchange', 'handlechange_xbs(this);')));
+  }
+
+  return tr;
+}
+
+function add_table_row(tbody, racer, use_groups, use_subgroups, xbs) {
+  return make_table_row(racer, use_groups, use_subgroups, xbs).appendTo($(tbody));
+}

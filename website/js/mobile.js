@@ -55,15 +55,20 @@ function mobile_select(selects) {
 }
 
 // Update appearance to match the current selection
-function mobile_select_refresh(select) {
-  select = $(select);
-  select.prev("span").text(select.find("option:selected").text());
+function mobile_select_refresh(selects) {
+  $(selects).each(function(i, select) {
+    select = $(select);
+    select.prev("span").text(select.find("option:selected").text());
+  });
 }
 
 function mobile_text(texts) {
   $(texts).each(function(i, text) {
     text = $(text);
     text.wrap("<div class='mtext'/>");
+    if (text.attr('data-wrap-class')) {
+      text.parent().addClass(text.attr('data-wrap-class'));
+    }
   });
 }
 
@@ -114,6 +119,9 @@ function flipswitch_resize_for_text(checkbox) {
 
   var ontext = checkbox.siblings(".on").text();
   var offtext = checkbox.siblings(".off").text();
+
+  // console.log('flipswitch em = ' + em);
+  // console.log('ontext = ' + ontext);
 
   var offtext_size = measure_text(offtext, em);
   var ontext_size = measure_text(ontext, em);

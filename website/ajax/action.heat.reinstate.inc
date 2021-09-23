@@ -3,16 +3,19 @@
 require_once('inc/last-heat.inc');
 require_once('inc/write-heat-results.inc');
 require_once('inc/racing-state.inc');
-
-start_response();
+require_once('inc/events.inc');
 
 if (!have_permission(CONTROL_RACE_PERMISSION)) {
-  not_authorized_body();
+  json_not_authorized();
 } else {
   $ok = true;
   $last_heat = get_last_heat();
   $roundid = array_shift($last_heat);
   $heat = array_shift($last_heat);
+
+  record_event_for_discarded_heat('WHERE roundid = :roundid AND heat = :heat',
+                                  array(':roundid' => $roundid,
+                                        ':heat' => $heat));
 
   $result_column = read_raceinfo_boolean('use-points') ? 'finishplace' : 'finishtime';
   $lane = 1;
@@ -31,9 +34,8 @@ if (!have_permission(CONTROL_RACE_PERMISSION)) {
   }
   clear_last_heat();
   set_racing_state(0);
+
+  json_success();
+  require('ajax/query.poll.coordinator.inc');
 }
-
-require('ajax/query.poll.coordinator.inc');
-
-end_response();
 ?>

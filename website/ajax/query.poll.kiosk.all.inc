@@ -1,10 +1,8 @@
-<kiosk.all>
 <?php
 require_once('inc/kiosks.inc');
 
-echo "<current-scene id=\"".read_raceinfo('current_scene', '')."\"/>\n";
+json_out('current-scene', read_raceinfo('current-scene', ''));
 
-xml_for_all_kiosks();
-xml_for_kiosk_pages();
+json_out('kiosks', all_kiosks());
+json_out('kiosk-pages', all_kiosk_pages());
 ?>
-</kiosk.all>

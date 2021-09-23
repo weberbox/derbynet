@@ -14,16 +14,13 @@
 //
 // <exposed> == '' means all shown
 
-start_response();
-
 if (have_permission(PRESENT_AWARDS_PERMISSION)) {
   $prev = explode('-', read_raceinfo('standings-message', '0-'), 2);
   $expose = $prev[0];
   $entry = $prev[1];
-
   if (isset($_POST['catalog-entry']) && !empty($_POST['catalog-entry'])) {
     $e = json_decode($_POST['catalog-entry'], /* assoc */ true);
-    if (isset($e['kind'])) {
+    if (isset($e['key'])) {
       $entry = json_encode($e);
     }
   }
@@ -42,11 +39,12 @@ if (have_permission(PRESENT_AWARDS_PERMISSION)) {
 
   if (!empty($entry)) {
     write_raceinfo('standings-message', $expose.'-'.$entry);
+    json_out('catalog-entry', $entry);
+    json_out('exposed', $expose);
   }
-  echo "<success/>\n";
-} else {
-  not_authorized_body();
-}
 
-end_response();
+  json_success();
+} else {
+  json_not_authorized();
+}
 ?>

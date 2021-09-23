@@ -65,9 +65,11 @@ function inspect_database() {
                   'group_label_lc' => 'den',
                   'nracers' => 0,
                   'dens' => array(),
+                  'div_rule' => 'by-division',
                   'nawards' => 0,
                   'nheats' => 0,
                   'nresults' => 0,
+                  'fake-racers' => 0,
                   'settings_icon' => 'unknown',
                   'settings_details' => 'No photo directories defined.',
                   'writable' => false
@@ -86,6 +88,7 @@ function inspect_database() {
       $result['nresults'] = read_single_value('SELECT COUNT(DISTINCT heat) FROM RaceChart'
                                               .' WHERE finishtime IS NOT NULL'
                                               .'  OR finishplace IS NOT NULL');
+      $result['fake-racers'] = read_raceinfo('fake-racers', 0);
 
       $sorting_field = 'sortorder';
       if ($schema_version < 2) { $sorting_field = 'class'; }
@@ -95,6 +98,7 @@ function inspect_database() {
         $dens[] = $row['class'];
       }
       $result['dens'] = $dens;
+      $result['div_rule'] = read_raceinfo('group-formation-rule', 'by-division');
 
       if ($schema_version == expected_schema_version()) {
         $result['schema_status'] = "ok";
@@ -102,8 +106,9 @@ function inspect_database() {
         $result['schema_message'] =
             "<p>Schema version is S1".pad3($schema_version).", as expected."
             .(!locked_settings() ? "<br/>"
-              ."(If you have a previously-captured database snapshot,"
-              ." you can <a href='import-snapshot.php'>import it here.</a>)" : "")
+              ." You can <a href='import-snapshot.php'>Import a database</a>"
+              ." if you previously captured one."
+              : "")
             ."</p>\n";
       } else {
         $result['schema_status'] = "unknown";
@@ -235,9 +240,11 @@ function diagnose_configuration() {
                'group_label_lc' => 'den',
                'nracers' => 0,
                'dens' => array(),
+               'div_rule' => 'by-division',
                'nawards' => 0,
                'nheats' => 0,
                'nresults' => 0,
+               'fake-racers' => 0,
                'settings_icon' => 'unknown',
                'settings_details' => 'No photo directories defined.',
                'writable' => false
@@ -277,28 +284,32 @@ function build_setup_page_details() {
                                 'nheats' => $schema['nheats'],
                                 'nresults' => $schema['nresults']),
                'roster' => array('status' => $schema['nracers'] == 0 ? "unknown" : "ok",
+                                 'count' => $schema['nracers'],
+                                 'fake' => $schema['fake-racers'],
                                  'details' =>
                                  "<p>There ".plural_to_be($schema['nracers'], "racer", "racers")." registered."
                                  ."  (Visit the <a href=\"checkin.php\">Check-In page</a>"
                                  ." to enter individual racers.)</p>\n"),
-               'classes' => array('status' => count($schema['dens']) == 0 ? "unknown" : "ok",
-                                  'label' => $schema['group_label'],
-                                  'plural' => plural($schema['group_label']),
-                                  'details' =>
-                                  count($schema['dens']) == 0
-                                  ? "<p>There are no ".plural($schema['group_label_lc'])." defined.</p>\n"
-                                  : "<p>".implode(", ", $schema['dens'])."</p>\n"),
+               'groups' => array('status' => count($schema['dens']) == 0 ? "unknown" : "ok",
+                                 'label' => $schema['group_label'],
+                                 'plural' => plural($schema['group_label']),
+                                 'details' =>
+                                 "<p>".
+                                 ($schema['div_rule'] == 'by-division'
+                                  ? "Racing by ".$schema['group_label_lc'].": "
+                                  : ($schema['div_rule'] == 'one-group'
+                                     ? "Racing as one big group: "
+                                     : "Customized groups: ")).
+                                 (count($schema['dens']) == 0
+                                  ? "There are no ".plural($schema['group_label_lc'])." defined."
+                                  : implode(", ", $schema['dens']))
+                                 ."</p>\n"),
                'awards' => array('status' => $schema['nawards'] == 0 ? "unknown" : "ok",
                                  'details' => "<p>There ".plural_to_be($schema['nawards'], "award", "awards")." defined."
                                  ."  (Visit the <a href=\"awards-editor.php\">Awards Editor page</a>"
                                  ." to enter individual awards.)</p>\n"),
                'settings' => array('status' => $schema['settings_icon'],
                                    'details' => "<p>".$schema['settings_details']."</p>\n"),
-               'scenes' => array('status' => $db_ok ? 'ok' : 'unknown'),
-               'playlist' => array('status' => count($schema['dens']) == 0 ? "unknown" : "ok",
-                                   'details' => count($schema['dens']) == 0
-                                   ? "<p>There are no rounds defined.</p>"
-                                   : "<p>Automate round-to-round changes.</p>"),
                'form_fields' => build_form_fields_for_advanced_database_dialog($db_connection_string)
     );
 }

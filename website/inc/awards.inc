@@ -3,6 +3,9 @@ require_once('inc/classes.inc');
 require_once('inc/standings.inc');
 require_once('inc/ordinals.inc');
 require_once('inc/aggregate_round.inc');
+require_once('inc/schema_version.inc');
+require_once('inc/awards.inc');
+require_once('inc/voterid.inc');
 
 function maybe_populate_award_types() {
   if (read_single_value('SELECT COUNT(*) FROM AwardTypes') == 0) {
@@ -199,6 +202,71 @@ function add_speed_awards(&$awards) {
   }
 
   return $reserved_overall;
+}
+
+// For each award, add eligible-classids and eligible-rankids fields.
+function mark_award_eligibility(&$awards) {
+  list($classes, $classseq, $ranks, $rankseq) = classes_and_ranks();
+  $agg_classes = aggregate_classes();
+  compute_aggregate_constituents_tc($agg_classes);
+  foreach ($awards as &$award) {
+    // For awards on aggregate classes, the award can be given to any members of
+    // the native classes that comprise the aggregate class, perhaps indirectly.
+    if ($award['classid'] == 0) {
+      $award['eligible-classids'] = $classseq;  // All classids
+    } else if (isset($agg_classes[$award['classid']])) {
+      $agg = &$agg_classes[$award['classid']];
+      $award['eligible-classids'] = $agg['constituents_tc'];
+    } else {
+      $award['eligible-classids'] = array($award['classid']);
+    }
+
+    if ($award['rankid'] != 0) {
+      $award['eligible-rankids'] = array($award['rankid']);
+    } else if ($award['classid'] != 0 && isset($agg_classes[$award['classid']])) {
+      $agg = &$agg_classes[$award['classid']];
+      if (count($agg['rankids']) > 0) {
+        $award['eligible-rankids'] = $agg['rankids'];
+      } else {
+        $award['eligible-rankids'] = $rankseq;  // All rankids
+      }
+    } else {
+      $award['eligible-rankids'] = $rankseq;  // All rankids
+    }
+  }
+}
+
+function mark_votes_and_balloting(&$awards) {
+  global $db;
+  if (schema_version() < BALLOTING_SCHEMA) {
+    foreach ($awards as &$award) {
+      $award['ballot_depth'] = 0;
+      $award['votes'] = array();
+    }
+    return;
+  }
+
+  $depth_stmt = $db->prepare('SELECT depth FROM BallotAwards'
+                             .'     WHERE awardid = :awardid'
+                             .'      AND ballotid = :ballotid');
+  $votes_stmt = $db->prepare('SELECT Votes.racerid, COUNT(*) AS score,'
+                             .' firstname, lastname, carnumber'
+                             .' FROM '.inner_join('Votes', 'RegistrationInfo',
+                                                  'Votes.racerid = RegistrationInfo.racerid')
+                             .' WHERE Votes.awardid = :awardid'
+                             .' GROUP BY Votes.racerid'
+                             .' ORDER BY COUNT(*) DESC');
+
+  foreach ($awards as &$award) {
+    $depth_stmt->execute(array(':awardid' => $award['awardid'],
+                               ':ballotid' => BALLOTID));
+    $depth = $depth_stmt->fetch(PDO::FETCH_ASSOC);
+    $award['ballot_depth'] = ($depth === false) ? 0 : $depth['depth'];
+    $depth_stmt->closeCursor();
+
+    $votes_stmt->execute(array(':awardid' => $award['awardid']));
+    $award['votes'] = $votes_stmt->fetchAll(PDO::FETCH_ASSOC);
+  }
 }
 
 ?>

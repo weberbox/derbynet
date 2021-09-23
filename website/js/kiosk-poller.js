@@ -19,24 +19,25 @@ var KioskPoller = (function(KioskPoller) {
               data: {query: 'poll.kiosk',
                      address: address},
               success: function(data) {
+                var setting = data['kiosk-setting'];
                 cancel_ajax_failure();
-                $("#kiosk_name").text(data.documentElement.getAttribute("name"));
-                var page = data.documentElement.getAttribute("page");
+                $("#kiosk_name").text(setting.name);
+                var page = setting.page;
                 if (page != kiosk_page) {
                   console.log("Forcing a reload, because page (" + page
                               + ") != current kiosk_page (" + kiosk_page + ")");
                   location.reload(true);
                   return;
                 }
-	            var reload = data.documentElement.getElementsByTagName("reload");
-                if (reload && reload.length > 0) {
+	            if (data.hasOwnProperty('reload') && data.reload) {
                   console.log("Forcing a reload because it was explicitly requested.");
                   location.reload(true);
                   return;
                 }
-                var params_string = data.documentElement.getAttribute("params");
-                if (params_string == '') {
-                  params_string = '{}';
+                var params_string = '{}';
+                if (setting.hasOwnProperty('params') && setting.params.length !== 0) {
+                  console.log("setting.params=" + setting.params)
+                  params_string = setting.params;
                 }
                 KioskPoller.param_callback(JSON.parse(params_string));
               }

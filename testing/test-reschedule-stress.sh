@@ -17,44 +17,44 @@ user_login_coordinator
 `dirname $0`/reset-database.sh "$BASE_URL"
 
 for i in $(seq 1 100) ; do
-    curl_post action.php \
-         "action=racer.import&firstname=Racer-$i&lastname=Racer-$i&classname=Unwashed-Class" | check_success
+    curl_postj action.php \
+         "action=racer.import&firstname=Racer-$i&lastname=Racer-$i&division=Unwashed-Class" | check_jsuccess
 done
-curl_post action.php "action=racer.bulk&what=number&who=all&start=101" | check_success
+curl_postj action.php "action=racer.bulk&what=number&who=all&start=101" | check_jsuccess
 
-curl_post action.php "action=racer.import&firstname=RacerX&lastname=RacerX&classname=Unwashed-Class" | check_success
-curl_post action.php "action=racer.import&firstname=RacerY&lastname=RacerY&classname=Unwashed-Class" | check_success
+curl_postj action.php "action=racer.import&firstname=RacerX&lastname=RacerX&division=Unwashed-Class" | check_jsuccess
+curl_postj action.php "action=racer.import&firstname=RacerY&lastname=RacerY&division=Unwashed-Class" | check_jsuccess
 
 
 function setup_schedule() {
     NLANES="$1"
     NRACERS="$2"
 
-    curl_post action.php "action=settings.write&n-lanes=$NLANES" | check_success
-    curl_post action.php "action=racer.bulk&what=checkin&who=all&value=0" | check_success
+    curl_postj action.php "action=settings.write&n-lanes=$NLANES" | check_jsuccess
+    curl_postj action.php "action=racer.bulk&what=checkin&who=all&value=0" | check_jsuccess
     # NRACERS racers pass inspection
     for i in $(seq 1 $NRACERS) ; do
-        curl_post action.php "action=racer.pass&racer=$i" | check_success
+        curl_postj action.php "action=racer.pass&racer=$i" | check_jsuccess
     done
 
-    curl_post action.php "action=schedule.generate&roundid=1" | check_success
+    curl_postj action.php "action=schedule.generate&roundid=1" | check_jsuccess
     # RacerX
-    curl_post action.php "action=racer.pass&racer=101&value=1" | check_success
+    curl_postj action.php "action=racer.pass&racer=101&value=1" | check_jsuccess
     # RacerY
-    curl_post action.php "action=racer.pass&racer=102&value=1" | check_success
-    curl_post action.php "action=heat.select&roundid=1&now_racing=1" | check_success
+    curl_postj action.php "action=racer.pass&racer=102&value=1" | check_jsuccess
+    curl_postj action.php "action=heat.select&roundid=1&now_racing=1" | check_jsuccess
 }
 
 
 function do_reschedule() {
     echo
-    curl_post action.php "action=schedule.reschedule&roundid=1"
+    curl_postj action.php "action=schedule.reschedule&roundid=1"
     echo
 }
 
 function cleanup() {
-    curl_post action.php "action=result.delete&roundid=1" | check_success
-    curl_post action.php "action=schedule.unschedule&roundid=1" | check_success
+    curl_postj action.php "action=result.delete&roundid=1" | check_jsuccess
+    curl_postj action.php "action=schedule.unschedule&roundid=1" | check_jsuccess
 }
 
 function test_with_completions() {

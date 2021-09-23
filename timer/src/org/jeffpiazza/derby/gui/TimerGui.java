@@ -3,6 +3,7 @@ package org.jeffpiazza.derby.gui;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.util.ArrayList;
 import javax.swing.*;
 import org.jeffpiazza.derby.*;
 import org.jeffpiazza.derby.devices.TimerDevice;
@@ -16,11 +17,14 @@ import org.jeffpiazza.derby.devices.TimerTask;
 // (login and start HttpTask)
 //
 // Command-line arguments may let us skip some of these steps.
-public class TimerGui {
+public class TimerGui implements RoleFinder.RoleFinderClient {
   private Components components;
   private Connector connector;
   private RoleFinder roleFinder;
   private boolean rolesPopulated = false;
+  // If non-null, use this role for the first login attempt, even if it's not
+  // one of the available choices
+  private String requestedRole = null;
 
   private TimerClassListController timerClassListController;
   private SerialPortListController portListController;
@@ -80,27 +84,7 @@ public class TimerGui {
   public void setRoleAndPassword(String role, String password) {
     components.roleComboBox.setSelectedItem(role);
     components.passwordField.setText(password);
-
-    (new Thread() {
-      @Override
-      public void run() {
-        // Wait for RoleFinder to finish populating roles.  If there's no
-        // RoleFinder, then give up (there's no URL, or the RoleFinder failed).
-        while (!rolesPopulated()) {
-          if (getRoleFinder() == null) {
-            return;
-          }
-          synchronized (TimerGui.this) {
-            try {
-              TimerGui.this.wait();
-            } catch (InterruptedException ex) {
-            }
-          }
-        }
-
-        startHttpTask(getRoleFinder().getSession());
-      }
-    }).start();
+    this.requestedRole = role;
   }
 
   // This is mainly used to introduce a SimulatedClientSession and skip all the
@@ -176,18 +160,22 @@ public class TimerGui {
       // Cancel existing rolefinder
       roleFinder.cancel();
       setRoleFinder(null);
+      roleFinder = null;
     }
     if (roleFinder == null) {
       setHttpStatus("Contacting server...", black, icon_unknown);
       components.roleComboBox.setEnabled(false);
       components.passwordField.setEnabled(false);
       startRoleFinder();
-    } else // There's an existing roleFinder for the current URL, and the user
-    // clicked "Connect."  If we're still waiting for the roles to
-    // populate, then ignore the button, otherwise start a login request
-    {
+    } else {
+       // There's an existing roleFinder for the current URL, and the user
+      // clicked "Connect."  If we're still waiting for the roles to
+      // populate, then ignore the button, otherwise start a login request by
+      // startHttpTask.
       if (rolesPopulated()) {
-        startHttpTask(roleFinder.getSession());
+        if (roleFinder != null) {
+          startHttpTask(roleFinder.getSession());
+        }
       } else {
         setHttpStatus("(Hold your horses)", black, icon_unknown);
       }
@@ -197,20 +185,49 @@ public class TimerGui {
   // Start a separate thread to contact the server and ask it for the available
   // roles; use the results to populate the role picker.
   private void startRoleFinder() {
-    setRoleFinder(new RoleFinder(components.urlField.getText(), this));
+    setRoleFinder(RoleFinder.start(components.urlField.getText(), this));
     setRolesPopulated(false);
-    (new Thread() {
-      @Override
-      public void run() {
-        getRoleFinder().findRoles();
-      }
-    }).start();
+  }
+
+  @Override
+  public void rolesFound(ArrayList<String> roles, ClientSession session) {
+    components.urlField.setText(session.getBaseUrl());
+    for (String role : roles) {
+      components.roleComboBox.addItem(role);
+    }
+
+    synchronized (this) {
+      setRolesPopulated(true);
+      // Try logging in to the first role with an empty password -- almost always
+      // works, and makes for one less thing for the operator to have to do.
+      onConnectButtonClick();
+      setHttpStatus("Please log in", black, icon_unknown);
+      components.roleComboBox.setEnabled(true);
+      components.passwordField.setEnabled(true);
+      components.passwordField.requestFocus();
+    }
+  }
+
+  @Override
+  public synchronized void roleFinderFailed(String message) {
+    LogWriter.info("RoleFinder failed: " + message);
+    setHttpStatus(message, red, icon_trouble);
+    roleFinder = null;
   }
 
   private void startHttpTask(ClientSession clientSession) {
+    String role = (String) components.roleComboBox.getSelectedItem();
+    if (requestedRole != null) {
+      // Setting the combobox may not have any effect if requestedRole doesn't
+      // match one of the roles from the server, but try it for login anyway.
+      components.roleComboBox.setSelectedItem(requestedRole);
+      role = requestedRole;
+      requestedRole = null;  // Only try it once
+    }
     setHttpStatus("Logging in...", black, icon_unknown);
-    HttpTask.start(                   clientSession,
-                   connector,
+    HttpTask.start(clientSession, connector,
+                   (String) components.roleComboBox.getSelectedItem(),
+                   String.valueOf(components.passwordField.getPassword()),
                    new HttpTask.LoginCallback() {
                  @Override
                  public void onLoginSuccess() {
@@ -222,30 +239,6 @@ public class TimerGui {
                    setHttpStatus("Unsuccessful login", red, icon_trouble);
                  }
                });
-  }
-
-  // Called once for each role to be added to the role combobox.  After the last role is added,
-  // call rolesComplete()
-  public void addRole(String role) {
-    components.roleComboBox.addItem(role);
-  }
-
-  // Called to signify that all the appropriate roles from the server have
-  // been added to the role combobox
-  public synchronized void rolesComplete() {
-    setRolesPopulated(true);
-    // Try logging in to the first role with an empty password -- almost always
-    // works, and makes for one less thing for the operator to have to do.
-    onConnectButtonClick();
-    setHttpStatus("Please log in", black, icon_unknown);
-    components.roleComboBox.setEnabled(true);
-    components.passwordField.setEnabled(true);
-    components.passwordField.requestFocus();
-  }
-
-  public synchronized void roleFinderFailed(String message) {
-    setHttpStatus(message, red, icon_trouble);
-    roleFinder = null;
   }
 
   public void updateSerialPorts(TimerTask timerTask, String[] portNames) {

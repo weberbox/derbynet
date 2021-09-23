@@ -62,6 +62,9 @@ run_tests() {
 
     `dirname $0`/test-messaging.sh "$BASE_URL"
 
+############################## Racing Groups and Divisions ##############################
+    `dirname $0`/test-divisions.sh "$BASE_URL"
+
 ############################## Master Schedule ##############################
     `dirname $0`/reset-database.sh "$BASE_URL"
     `dirname $0`/import-roster.sh "$BASE_URL"
@@ -78,6 +81,7 @@ run_tests() {
 
     `dirname $0`/test-aggregate-rounds.sh "$BASE_URL"
     `dirname $0`/test-aggregate-classes.sh "$BASE_URL"
+    `dirname $0`/test-aggregate-nonracing.sh "$BASE_URL"
 
 ############################## Snapshot Export and Import ##############################
     `dirname $0`/reset-database.sh "$BASE_URL"
@@ -85,7 +89,10 @@ run_tests() {
     `dirname $0`/test-den-changes.sh "$BASE_URL"
     `dirname $0`/test-unused-lanes.sh "$BASE_URL"
 
+    `dirname $0`/test-balloting.sh "$BASE_URL"
+
     SNAPSHOT=$(mktemp /tmp/derby-snapshot.xml.XXXXX)
+    echo Taking snapshot in $SNAPSHOT
     curl_get "action.php?query=snapshot.get" > $SNAPSHOT
 
     `dirname $0`/test-import-results.sh "$BASE_URL"
@@ -104,6 +111,10 @@ run_tests() {
     fi
 
     rm $SNAPSHOT
+
+    tput setaf 2  # green text
+    echo "<<<<<<<<<<<<<<<<<<<<<<<< Test run complete >>>>>>>>>>>>>>>>>>>>>>>>"
+    tput setaf 0  # black text
 }
 
 rm `dirname $0`/*.curl 2>&1 || true
@@ -113,15 +124,15 @@ if [ "$DBTYPE" == "none" ] ; then
 elif [ "$DBTYPE" == "sqlite" ] ; then
     DBPATH=${1:-/Library/WebServer/Documents/xsite/local/trial.sqlite}
     prepare_for_setup
-    curl_post action.php \
+    curl_postj action.php \
         "action=setup.nodata&connection_string=sqlite:$DBPATH&dbuser=&dbpass=" \
-        | check_success
+        | check_jsuccess
     run_tests
 elif [ "$DBTYPE" == "access" ] ; then
     prepare_for_setup
-    curl_post action.php \
+    curl_postj action.php \
               "action=setup.nodata&connection_string=odbc:DSN=gprm;Exclusive=NO&dbuser=&dbpass=" \
-        | check_success
+        | check_jsuccess
 
     # Access databases can't load a database snapshot, because it doesn't allow
     # primary key fields to be rewritten (I guess):

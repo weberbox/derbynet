@@ -2,6 +2,7 @@
 
 require_once('inc/schema_version.inc');
 require_once('inc/sql-script.inc');
+require_once('inc/ordinals.inc');
 
 // The 'Events' table provides a history of important changes in the data.
 // All entries populate seq, tstamp, and action fields.
@@ -15,6 +16,13 @@ define('EVENT_RACER_PHOTO_ASSIGN', 2);
 define('EVENT_CAR_PHOTO_ASSIGN', 3);
 
 define('EVENT_TIMER_MALFUNCTION', 20);
+// A 'FINISHED' message arrived when not in a racing state (
+define('EVENT_TIMER_RESULT_REFUSED', 25);
+
+define('EVENT_PURGE_RESULTS', 90);
+define('EVENT_PURGE_SCHEDULES', 91);
+define('EVENT_PURGE_RACERS', 92);
+define('EVENT_PURGE_AWARDS', 93);
 
 // A racer's heat result was discarded (we record the value that was discarded,
 // in case questions arise later).  (racerid, roundid, heat, lane, other)
@@ -27,6 +35,20 @@ define('EVENT_RESULT_DISCARDED', 100);  // racerid, roundid, heat, lane, other(p
 // field.
 define('EVENT_HEAT_COMPLETED', 101);  // roundid, heat
 define('EVENT_HEAT_MANUALLY_ENTERED', 102);
+
+define('EVENT_CLASS_ADDED', 200);
+define('EVENT_RANK_ADDED', 201);
+define('EVENT_ROUND_ADDED', 202);
+define('EVENT_SCHEDULE_ADDED', 203);
+
+// Not yet implemented:
+define('EVENT_PLAYLIST_ADDED', 209);
+define('EVENT_PLAYLIST_REMOVED', 210);
+
+define('EVENT_CLASS_DELETED', 301);
+define('EVENT_RANK_DELETED', 302);
+define('EVENT_ROUND_DELETED', 303);
+define('EVENT_SCHEDULE_DELETED', 303);
 
 
 function create_events_table() {
@@ -60,14 +82,93 @@ function record_event($action, $racerid, $other = '') {
                          ':other' => $other));
 }
 
+function record_event_create_class($classid, $classname) {
+  record_event_sql('INSERT INTO Events(tstamp, action, classid, other)'
+                   .' VALUES('.dbnow_expr().', :action, :classid, :other)',
+                   array(':action' => EVENT_CLASS_ADDED,
+                         ':classid' => $classid,
+                         ':other' => $classname));
+}
+function record_event_delete_class($classid) {
+  record_event_sql('INSERT INTO Events(tstamp, action, classid)'
+                   .' VALUES('.dbnow_expr().', :action, :classid)',
+                   array(':action' => EVENT_CLASS_DELETED,
+                         ':classid' => $classid));
+}
+function record_event_create_rank($classid, $rankid, $rankname) {
+  record_event_sql('INSERT INTO Events(tstamp, action, classid, rankid, other)'
+                   .' VALUES('.dbnow_expr().', :action, :classid, :rankid, :other)',
+                   array(':action' => EVENT_RANK_ADDED,
+                         ':classid' => $classid,
+                         ':rankid' => $rankid,
+                         ':other' => $rankname));
+}
+// Either classid or rankid can be -1 for unknown
+function record_event_delete_rank($classid, $rankid) {
+  record_event_sql('INSERT INTO Events(tstamp, action, classid, rankid)'
+                   .' VALUES('.dbnow_expr().', :action, :classid, :rankid)',
+                   array(':action' => EVENT_RANK_DELETED,
+                         ':classid' => $classid,
+                         ':rankid' => $rankid));
+}
+// $roundid can be -1 for not known
+function record_event_create_round($roundid, $classid, $roundno) {
+  if ($roundid < 0) {
+    $roundid = read_single_value('SELECT roundid FROM Rounds'
+                                 .' WHERE classid = :classid AND round = :roundno',
+                                 array(':classid' => $classid,
+                                       ':roundno' => $roundno));
+  }
+  record_event_sql('INSERT INTO Events(tstamp, action, classid, roundid, other)'
+                   .' VALUES('.dbnow_expr().', :action, :classid, :roundid, :other)',
+                   array(':action' => EVENT_ROUND_ADDED,
+                         ':classid' => $classid,
+                         ':roundid' => $roundid,
+                         ':other' => 'round '.$roundno));
+}
+
+function record_event_delete_round($classid, $roundid) {
+  $roundno = -1;
+  if ($roundid >= 0) {
+    list($classid, $roundno) = read_single_row('SELECT classid, round FROM Rounds'
+                             .' WHERE roundid = :roundid',
+                             array(':roundid' => $roundid));
+  }
+  $classname = read_single_value('SELECT class FROM Classes WHERE classid = :classid',
+                                 array(':classid' => $classid));
+  if ($classname === false) {
+    $classname = '(No such class)';
+  }
+
+  record_event_sql('INSERT INTO Events(tstamp, action, roundid, classid, other)'
+                   .' VALUES('.dbnow_expr().', :action, :roundid, :classid, :other)',
+                   array(':action' => EVENT_ROUND_DELETED,
+                         ':roundid' => $roundid,
+                         ':classid' => $classid,
+                         ':other' => "$classname, Round $roundno"));
+}
+function record_event_create_schedule($roundid) {
+  record_event_sql('INSERT INTO Events(tstamp, action, roundid)'
+                   .' VALUES('.dbnow_expr().', :action, :roundid)',
+                   array(':action' => EVENT_SCHEDULE_ADDED,
+                         ':roundid' => $roundid));
+}
+function record_event_delete_schedule($roundid, $other) {
+  record_event_sql('INSERT INTO Events(tstamp, action, roundid, other)'
+                   .' VALUES('.dbnow_expr().', :action, :roundid, :other)',
+                   array(':action' => EVENT_SCHEDULE_DELETED,
+                         ':roundid' => $roundid,
+                         ':other' => $other));
+}
+
 // Call this BEFORE rewriting a heat result
-function record_event_for_discarded_result($resultid) {
-  $old_result = read_single_row('SELECT racerid, roundid, heat, lane, finishtime, finishplace'
-                                .' FROM RaceChart'
-                                .' WHERE resultid = :resultid',
-                                array(':resultid' => $resultid),
-                                PDO::FETCH_ASSOC);
-  if ($old_result !== false) {
+// $where is a WHERE clause against RaceChart for results being discarded.
+function record_event_for_discarded_heat($where, $params) {
+  global $db;
+  $stmt = $db->prepare('SELECT racerid, roundid, heat, lane, finishtime, finishplace'
+                       .' FROM RaceChart '.$where);
+  $stmt->execute($params);
+  foreach ($stmt as $old_result) {
     record_event_sql('INSERT INTO Events(tstamp, action, racerid, roundid, heat, lane, other)'
                      .' VALUES('.dbnow_expr().', :action, :racerid, :roundid, :heat, :lane, :other)',
                      array(':action' => EVENT_RESULT_DISCARDED,
@@ -75,11 +176,35 @@ function record_event_for_discarded_result($resultid) {
                            ':roundid' => $old_result['roundid'],
                            ':heat' => $old_result['heat'],
                            ':lane' => $old_result['lane'],
-                           ':other' => $old_result['finishtime'].' ('.$old_result['finishplace'].')'));
+                           ':other' => $old_result['finishtime']
+                           .' ('.ordinal($old_result['finishplace']).')'));
   }
 }
 
+// $results maps lane to {time, place}
+function record_event_for_refused_result($results) {
+  foreach ($results as $lane => $r) {
+    if ($r) {
+      $other = '';
+      if (isset($r['time'])) {
+        $other .= $r['time'];
+      }
+      if (isset($r['place'])) {
+        $other .= ' ('.ordinal($r['place']).')';
+      }
+      record_event_sql('INSERT INTO Events(tstamp, action, lane, other)'
+                       .' VALUES('.dbnow_expr().', :action, :lane, :other)',
+                       array(':action' => EVENT_TIMER_RESULT_REFUSED,
+                             ':lane' => $lane + 1,
+                             ':other' => $other));
+    }
+  }
+}
 
+function record_event_purge($action) {
+  record_event_sql('INSERT INTO Events(tstamp, action) VALUES('.dbnow_expr().', :action)',
+                   array(':action' => $action));
+}
 
 // Returns an array of racer records, in the order in which they had the
 // specified event action recorded

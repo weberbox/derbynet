@@ -37,6 +37,10 @@ public class RacemasterDevice extends TimerDeviceBase {
     super(portWrapper);
   }
 
+  public static String toHumanString() {
+    return "JIT Racemaster";
+  }
+
   private static final int kDeadlineMs = 10000;
 
   private String timerIdentifier;
@@ -52,9 +56,7 @@ public class RacemasterDevice extends TimerDeviceBase {
     if (!portWrapper.setPortParams(SerialPort.BAUDRATE_9600,
                                    SerialPort.DATABITS_8,
                                    SerialPort.STOPBITS_1,
-                                   SerialPort.PARITY_NONE,
-                                   /* rts */ false,
-                                   /* dtr */ false)) {
+                                   SerialPort.PARITY_NONE)) {
       return false;
     }
 

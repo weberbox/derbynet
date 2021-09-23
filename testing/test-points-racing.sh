@@ -13,50 +13,83 @@ user_login_coordinator
 `dirname $0`/test-basic-checkins.sh "$BASE_URL"
 
 # Reinstate car 111
-curl_post action.php "action=racer.edit&racer=11&firstname=Carroll&lastname=Cybulski&carno=111&carname=Vroom&rankid=1&exclude=0" | check_success
+curl_postj action.php "action=racer.edit&racer=11&firstname=Carroll&lastname=Cybulski&carno=111&carname=Vroom&rankid=1&exclude=0" | check_jsuccess
 
-curl_post action.php "action=settings.write&use-points=1&use-points-checkbox" | check_success
-curl_post action.php "action=settings.write&n-lanes=4" | check_success
+curl_postj action.php "action=settings.write&use-points=1&use-points-checkbox" | check_jsuccess
+curl_postj action.php "action=settings.write&n-lanes=4" | check_jsuccess
 
 
 ### Schedule roundid 1
-curl_post action.php "action=schedule.generate&roundid=1" | check_success
+curl_postj action.php "action=schedule.generate&roundid=1" | check_jsuccess
 # Racing for roundid=1: 5 heats
-curl_post action.php "action=heat.select&roundid=1&now_racing=1" | check_success
+curl_postj action.php "action=heat.select&roundid=1&now_racing=1" | check_jsuccess
 
 user_login_timer
 curl_post action.php "action=timer-message&message=HELLO" | check_success
 curl_post action.php "action=timer-message&message=IDENTIFIED&nlanes=4" | check_success
 
-staged_heat4 101 121 141 111
-run_heat_place 1 1   2 3 4 1
-staged_heat4 111 131 101 121
-run_heat_place 1 2   1 4 2 3
+run_heat -place 1 1   101:2 121:3 141:4 111:1
+run_heat -place 1 2   111:1 131:4 101:2 121:3
+
 # Report times for this heat, let timer-message compute places
-staged_heat4 121 141 111 131
-run_heat 1 3   3.3 3.2 3.1 3.4
-staged_heat4 131 101 121 141
-run_heat_place 1 4   4 1 2 3
+# First we have a tie for last place in the heat, as for a couple of DNFs;
+# neither racer gets any points for the heat
+run_heat 1 3 121:9.9999 141:3.2 111:3.1 131:9.9999
 
 user_login_coordinator
-curl_get "action.php?query=poll.coordinator" | grep last_heat | expect_one available
-curl_post action.php "action=heat.rerun&heat=last" | check_success
-curl_get "action.php?query=poll.coordinator" | grep last_heat | expect_one recoverable
-curl_get "action.php?query=poll.coordinator" | expect_count 'finishtime=.. ' 4
-curl_get "action.php?query=poll.coordinator" | expect_count 'finishplace=../' 4
+# Check the points for each racer in the heat: # heats, total points
+curl_text "standings.php" | grep 121 | expect_one "<td>3</td><td>5</td>"
+curl_text "standings.php" | grep 141 | expect_one "<td>2</td><td>4</td>"
+curl_text "standings.php" | grep 111 | expect_one "<td>3</td><td>12</td>"
+curl_text "standings.php" | grep 131 | expect_one "<td>2</td><td>2</td>"
+curl_postj action.php "action=heat.rerun&heat=last" | check_jsuccess
+user_login_timer
 
-curl_post action.php "action=heat.reinstate" | grep last_heat | expect_one none
-curl_get "action.php?query=poll.coordinator" | grep "Felton Fouche" | expect_one 'finishplace=.4.'
-curl_get "action.php?query=poll.coordinator" | grep "Adolfo" | expect_one 'finishplace=.1.'
-curl_get "action.php?query=poll.coordinator" | grep "Derick Dreier" | expect_one 'finishplace=.2.'
-curl_get "action.php?query=poll.coordinator" | grep "Jesse Jara" | expect_one 'finishplace=.3.'
+# Now re-run with a tie for first place
+run_heat 1 3  121:3.3 141:3.1 111:3.1 131:3.4
 
-curl_post action.php "action=heat.select&heat=next&now_racing=1" | check_success
+user_login_coordinator
+curl_text "standings.php" | grep 121 | expect_one "<td>3</td><td>6</td>"
+curl_text "standings.php" | grep 141 | expect_one "<td>2</td><td>4</td>"
+curl_text "standings.php" | grep 111 | expect_one "<td>3</td><td>11</td>"
+curl_text "standings.php" | grep 131 | expect_one "<td>2</td><td>2</td>"
+curl_postj action.php "action=heat.rerun&heat=last" | check_jsuccess
+user_login_timer
+
+# Finally, re-run the heat again, now with four good times:
+run_heat 1 3  121:3.3 141:3.2 111:3.1 131:3.4
+
+user_login_coordinator
+curl_text "standings.php" | grep 121 | expect_one "<td>3</td><td>6</td>"
+curl_text "standings.php" | grep 141 | expect_one "<td>2</td><td>4</td>"
+curl_text "standings.php" | grep 111 | expect_one "<td>3</td><td>12</td>"
+curl_text "standings.php" | grep 131 | expect_one "<td>2</td><td>2</td>"
+user_login_timer
+
+run_heat -place 1 4   131:4 101:1 121:2 141:3
+
+user_login_coordinator
+curl_getj "action.php?query=poll.coordinator" | jq '.["last-heat"] == "available"' | expect_eq true
+curl_postj action.php "action=heat.rerun&heat=last" | check_jsuccess
+curl_getj "action.php?query=poll.coordinator" | \
+    jq '.["last-heat"] == "recoverable" and 
+        (.["heat-results"] | all(has("finishtime") and has("finishplace")))' | \
+    expect_eq true
+
+curl_postj action.php "action=heat.reinstate" | grep 'last[_-]heat' | expect_one none
+curl_getj "action.php?query=poll.coordinator" | \
+    jq '.racers | 
+        all((.finishplace==1 and (.name | test("Adolfo.*"))) or 
+            (.finishplace==2 and .name == "Derick Dreier") or 
+            (.finishplace==3 and .name == "Jesse Jara") or 
+            (.finishplace==4 and .name == "Felton Fouche"))' | \
+    expect_eq true
+
+curl_postj action.php "action=heat.select&heat=next&now_racing=1" | check_jsuccess
 user_login_timer
 
 
-staged_heat4 141 111 131 101
-run_heat_place 1 5   2 1 4 3  x
+run_heat -place 1 5   141:2 111:1 131:4 101:3  x
 
 # Results (place):
 # 111 101 121 141
@@ -73,11 +106,13 @@ run_heat_place 1 5   2 1 4 3  x
 # 131         Felton         Fouche      16                 4
 
 user_login_coordinator
-curl_post action.php "action=award.present&key=speed-2-1" | check_success
-curl_get "action.php?query=award.current" | expect_one Asher
+curl_postj action.php "action=award.present&key=speed-2-1" | check_jsuccess
+curl_getj "action.php?query=award.current" | expect_one Asher
 
-curl_get "action.php?query=poll.ondeck" | grep 'resultid="1"' | expect_one 'result="2nd"'
-curl_get "action.php?query=poll.ondeck" | grep 'resultid="4"' | expect_one 'result="1st"'
+curl_getj "action.php?query=poll.ondeck" | \
+    jq -r '.updates | map(select(.resultid == 1))[0].result' | expect_eq 2nd
+curl_getj "action.php?query=poll.ondeck" | \
+    jq -r '.updates | map(select(.resultid == 4))[0].result' | expect_eq 1st
 
 # Test the tie in the standings:
 #
@@ -102,53 +137,49 @@ curl_text "export.php" | sed -n -e '/START_JSON/,/END_JSON/ p' | tail -2 | head 
     expect_one '[5,"131","Felton Fouche","","Lions \u0026 Tigers",5,"4","4","4th","4th"]'
 
 # award presentation when there's a tie for 3rd
-curl_post action.php "action=award.present&key=speed-3a-1" | check_success
-curl_get "action.php?query=award.current" | expect_one Derick
-curl_post action.php "action=award.present&key=speed-3b-1" | check_success
-curl_get "action.php?query=award.current" | expect_one Jesse
+curl_postj action.php "action=award.present&key=speed-3a-1" | check_jsuccess
+curl_getj "action.php?query=award.current" | expect_one Derick
+curl_postj action.php "action=award.present&key=speed-3b-1" | check_jsuccess
+curl_getj "action.php?query=award.current" | expect_one Jesse
 
 # There are only two tied for 3rd place, not a third
-curl_post action.php "action=award.present&key=speed-3c-1" | check_success
-curl_get "action.php?query=award.current" | expect_count '<award ' 0
+curl_postj action.php "action=award.present&key=speed-3c-1" | check_jsuccess
+curl_getj "action.php?query=award.current" | jq 'length' | expect_eq 0
 
 # There's no fourth place when there's a tie for 3rd
-curl_post action.php "action=award.present&key=speed-4-1" | check_success
-curl_get "action.php?query=award.current" | expect_count '<award ' 0
+curl_postj action.php "action=award.present&key=speed-4-1" | check_jsuccess
+curl_getj "action.php?query=award.current" | jq 'length' | expect_eq 0
 
 # One-trophy-per-racer means Felton takes 1st place in Lions
-curl_post action.php "action=settings.write&one-trophy-per=1&one-trophy-per-checkbox" | check_success
-curl_post action.php "action=award.present&key=speed-3a" | check_success
-curl_get "action.php?query=award.current" | expect_one Derick
-curl_post action.php "action=award.present&key=speed-3b" | check_success
-curl_get "action.php?query=award.current" | expect_one Jesse
-curl_post action.php "action=award.present&key=speed-3c" | check_success
-curl_get "action.php?query=award.current" | expect_count '<award ' 0
-curl_post action.php "action=award.present&key=speed-4" | check_success
-curl_get "action.php?query=award.current" | expect_count '<award ' 0
-curl_post action.php "action=award.present&key=speed-1-1" | check_success
-curl_get "action.php?query=award.current" | expect_one Felton
-curl_post action.php "action=award.present&key=speed-2-1" | check_success
-curl_get "action.php?query=award.current" | expect_count '<award ' 0
-
+curl_postj action.php "action=settings.write&one-trophy-per=1&one-trophy-per-checkbox" | check_jsuccess
+curl_postj action.php "action=award.present&key=speed-3a" | check_jsuccess
+curl_getj "action.php?query=award.current" | expect_one Derick
+curl_postj action.php "action=award.present&key=speed-3b" | check_jsuccess
+curl_getj "action.php?query=award.current" | expect_one Jesse
+curl_postj action.php "action=award.present&key=speed-3c" | check_jsuccess
+curl_getj "action.php?query=award.current" | jq 'length' | expect_eq 0
+curl_postj action.php "action=award.present&key=speed-4" | check_jsuccess
+curl_getj "action.php?query=award.current" | jq 'length' | expect_eq 0
+curl_postj action.php "action=award.present&key=speed-1-1" | check_jsuccess
+curl_getj "action.php?query=award.current" | expect_one Felton
+curl_postj action.php "action=award.present&key=speed-2-1" | check_jsuccess
+curl_getj "action.php?query=award.current" | jq 'length' | expect_eq 0
 
 # Generate a next round of top 3, where there's a tie for third -- take 4 finalists
-curl_post action.php "action=roster.new&roundid=1&top=3" | check_success
-if [ "`grep -c '<finalist' $DEBUG_CURL`" -ne 4 ]; then
+curl_postj action.php "action=roster.new&roundid=1&top=3" | check_jsuccess
+jq -e '.finalists | map(.racerid) | sort == [1,11,21,41]' $DEBUG_CURL >/dev/null || \
     test_fails Expecting 4 finalists
-fi
 
-curl_post action.php "action=schedule.generate&roundid=6" | check_success
+curl_postj action.php "action=schedule.generate&roundid=6" | check_jsuccess
 # Racing for roundid=6: 4 heats
-curl_post action.php "action=heat.select&roundid=6&now_racing=1" | check_success
+curl_postj action.php "action=heat.select&roundid=6&now_racing=1" | check_jsuccess
 
-staged_heat4 111 141 121 101
-run_heat_place 6 1   2 3 4 1
-staged_heat4 101 111 141 121
-run_heat_place 6 2   3 4 1 2
-staged_heat4 121 101 111 141
-run_heat_place 6 3   4 1 2 3
-staged_heat4 141 121 101 111
-run_heat_place 6 4   1 2 3 4  x
+run_heat -place 6 1   111:2 141:3 121:4 101:1
+run_heat -place 6 2   101:3 111:4 141:1 121:2
+run_heat -place 6 3   121:4 101:1 111:2 141:3
+run_heat -place 6 4   141:1 121:2 101:3 111:4  x
+
+
 
 # Usage: curl_text standings.php | for_roundid 1 | ...
 function for_roundid() {

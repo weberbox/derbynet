@@ -1,7 +1,5 @@
 <?php
 
-start_response();
-
 // $read_fields and $write_fields are as would be passed to $stmt->execute(), but the
 // keys, minus a colon, have to correspond with column names in the table.
 function get_or_create_id($idfield, $tablename, $read_fields, $write_fields = null) {
@@ -30,15 +28,14 @@ function get_or_create_id($idfield, $tablename, $read_fields, $write_fields = nu
     $write_sql .= ') VALUES ('.$write_params.')';
     $stmt = $db->prepare($write_sql);
     if (!$stmt->execute($write_fields)) {
-      echo "<failure code=\"sql-write\">SQL execute failed: ".$write_sql."</failure>\n";
-      echo "<error-info>\n"; var_dump($db->errorInfo()); echo "</error-info>\n";
+      json_sql_failure($write_sql);
     }
 
     $id = read_single_value($read_sql, $read_fields);
   }
 
   if (!$id) {
-    echo '<failure code="unable">Unable to create entry in '.$tablename.' table.</failure>'."\n\n";
+    json_failure('unable', "Unable to create entry in $tablename table.");
   }
   // TODO Column width?
 
@@ -53,15 +50,22 @@ if (have_permission(SET_UP_PERMISSION)) {
                              array(':classid' => $classid),
                              array(':rank' => $_POST['class'],
                                    ':classid' => $classid));
+  $divisionid = get_or_create_id('divisionid', 'Divisions',
+                                 array(':rankid' => $rankid),
+                                 array(':name' => $_POST['class'],
+                                       ':rankid' => $rankid));
   $racerid = get_or_create_id('racerid', 'RegistrationInfo',
                               array(':lastname' => $_POST['lastname'],
                                     ':firstname' => $_POST['firstname'],
-                                    ':carnumber' => $_POST['carnumber']),
+                                    ':carnumber' => $_POST['carnumber'],
+                                    ':divisionid' => $divisionid,
+                                    ':classid' => $classid),
                               array(':carnumber' => $_POST['carnumber'],
                                     ':lastname' => $_POST['lastname'],
                                     ':firstname' => $_POST['firstname'],
                                     ':classid' => $classid,
                                     ':rankid' => $rankid,
+                                    ':divisionid' => $divisionid,
                                     ':passedinspection' => 1,
                                     ':exclude' => 0));
   $roundid = get_or_create_id('roundid', 'Rounds',
@@ -83,10 +87,10 @@ if (have_permission(SET_UP_PERMISSION)) {
                    array(':roundid' => $roundid,
                          ':classid' => $classid,
                          ':racerid' => $racerid));
-  echo "<success/>\n";
+  if ($json_out.outcome.summary != 'failure') {
+    json_success();
+  }
 } else {
-  not_authorized_body();
+  json_not_authorized();
 }
-
-end_response();
 ?>

@@ -85,6 +85,18 @@ array(
 
 
 
+'DROP TABLE ConstituentClasses',
+
+'CREATE TABLE ConstituentClasses'
+.'  ('
+.'  antecedent INTEGER,'
+.'  dependent INTEGER'
+.'  )',
+
+'CREATE UNIQUE INDEX AnteDependent'
+.'  ON ConstituentClasses (antecedent, dependent)',
+
+
 'DROP TABLE RaceChart',
 
 'CREATE TABLE RaceChart'
@@ -206,9 +218,11 @@ array(
 .'	FirstName        VARCHAR (15),'
 .'	ClassID          INTEGER,'
 .'	RankID           INTEGER,'
+.'  DivisionID       INTEGER,'
 .'	PassedInspection BIT,'
 .'	ImageFile        VARCHAR (255),'
 .(expected_schema_version() < 2 ? '' : '	CarPhoto        VARCHAR (255),')
+.'  Note             VARCHAR (255),'
 .'	Exclude          BIT'
 .'	)',
 
@@ -316,6 +330,12 @@ array(
 @include_once(sql_file_path('playlist-table')),
 
 @include_once(sql_file_path('award-type-values')),
+
+@include_once(sql_file_path('balloting')),
+
+@include_once(sql_file_path('timer-settings')),
+
+@include_once(sql_file_path('divisions')),
 
 array(
 

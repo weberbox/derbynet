@@ -3,8 +3,6 @@
 // if $_POST['heat'], then just delete results for that heat only
 require_once('inc/events.inc');
 
-start_response();
-
 if (have_permission(CONTROL_RACE_PERMISSION)) {
   $params = array();
   $sql = 'UPDATE RaceChart SET finishtime = NULL, finishplace = NULL, completed = NULL';
@@ -30,20 +28,17 @@ if (have_permission(CONTROL_RACE_PERMISSION)) {
     }
   }
 
-  $resultid = read_single_value('SELECT resultid FROM RaceChart'.$where, $params);
-  record_event_for_discarded_result($resultid);
+  record_event_for_discarded_heat($where, $params);
 
   $sql .= $where;
   $stmt = $db->prepare($sql);
   $stmt->execute($params);
 
-  echo "\n<success/>\n";
-  echo "<sql>".htmlspecialchars($sql, ENT_QUOTES, 'UTF-8')."</sql>\n";
+  json_success();
+  json_out('sql', $sql);
 
   require('ajax/query.poll.coordinator.inc');
 
 } else {
-  not_authorized_body();
+  json_not_authorized();
 }
-
-end_response();
