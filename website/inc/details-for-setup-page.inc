@@ -79,8 +79,8 @@ function inspect_database() {
   } else {
     try {
       $schema_version = schema_version();
-      $result['group_label'] = group_label();
-      $result['group_label_lc'] = group_label_lc();
+      $result['group_label'] = read_raceinfo('division-label', 'Den');
+      $result['group_label_lc'] = strtolower($result['group_label_rc']);
       
       $result['nracers'] = read_single_value('SELECT COUNT(*) FROM RegistrationInfo', array());
       $result['nawards'] = read_single_value('SELECT COUNT(*) FROM Awards', array());

@@ -3,6 +3,8 @@
 require_once('inc/data.inc');
 require_once('inc/banner.inc');
 require_once('inc/authorize.inc');
+require_once('inc/divisions.inc');
+
 require_permission(SET_UP_PERMISSION);  // TODO: What's the correct permission?
 
 $warn_no_timer = warn_no_timer();
@@ -23,6 +25,7 @@ $warn_no_timer = warn_no_timer();
 <script type="text/javascript" src="js/modal.js"></script>
 <script type="text/javascript" src="js/coordinator-controls.js"></script>
 <script type="text/javascript" src="js/coordinator-poll.js"></script>
+<script type="text/javascript" src="js/timer-alive.js"></script>
 <script type="text/javascript">
 var g_use_subgroups = <?php echo use_subgroups() ? "true" : "false"; ?>;
 </script>
@@ -86,6 +89,7 @@ var g_use_subgroups = <?php echo use_subgroups() ? "true" : "false"; ?>;
     </div>
 
     <div id='timer-test' class="block_buttons">
+      <a class="button_link" onclick="open_timer_window();">Timer</a>
       <a class='button_link' href='timer-test.php'>Test</a>
     </div>
 
