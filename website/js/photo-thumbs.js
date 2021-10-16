@@ -73,8 +73,6 @@ function make_draggable_photo(target) {
   target.draggable({
 	helper: 'clone',
 	appendTo: 'body',
-    // This used to be true, but apparently no longer:
-    //
 	// When using helper: clone, the clone's top left corner
 	// appears to be what controls selection of the droppable
 	// target, and I don't see any way to change it to use the
@@ -84,8 +82,7 @@ function make_draggable_photo(target) {
 	// care so much about horizontal position.)
 
 	// TODO: Don't know why only top has effect here.
-    //	cursorAt: { top: 0, left: 20 },
-
+	cursorAt: { top: 0, left: 20 },
 	opacity: 0.5,
 	revert: 'invalid',
 	scope: "assign",
@@ -202,8 +199,9 @@ function cropPhoto() {
                    original_width: $('#work_image img').width()
                   },
             success: function(data) {
-              if (data.hasOwnProperty('cache-breaker')) {
-                updateImage(photo_data.source, data['cache-breaker']);
+              var breaker = data.getElementsByTagName('cache_breaker');
+              if (breaker) {
+                updateImage(photo_data.source, breaker[0].getAttribute('time'));
               }
             }
            });
@@ -220,8 +218,9 @@ function rotatePhoto(angle) {
                  image_name: photo_data.basename,
                  rotation: angle},
           success: function(data) {
-            if (data.hasOwnProperty('cache-breaker')) {
-              var breaker_time = data['cache-breaker'];
+            var breaker = data.getElementsByTagName('cache_breaker');
+            if (breaker) {
+              var breaker_time = breaker[0].getAttribute('time');
               setupPhotoCrop(photo_data.repo, photo_data.basename, breaker_time);
               updateImage(photo_data.source, breaker_time);
             }
@@ -254,18 +253,18 @@ Dropzone.options.uploadTarget = {
   // dropzone considers the upload successful as long as there was an HTTP response.  We need to look at the
   // message that came back and determine whether the file was actually accepted.
   success: function(file, response) {
-    if (response.outcome.summary == 'failure') {
+    var xml = $.parseXML(response);
+    var failures = xml.getElementsByTagName("failure");
+    if (failures.length > 0) {
       file.status = 'error';
-      file.previewElement.querySelectorAll("[data-dz-errormessage]")[0].textContent =
-        response.outcome.description;
+      file.previewElement.querySelectorAll("[data-dz-errormessage]")[0].textContent = failures[0].textContent;
       file.previewElement.classList.add("dz-error");
     } else {
-      var uploaded
       var uploaded = xml.getElementsByTagName("uploaded");
       var thumb = xml.getElementsByTagName("thumbnail");
-      if (response.hasOwnProperty('uploaded')) {
-        var uploaded = response.uploaded;
-        var thumb = response.thumbnail;
+      if (uploaded.length > 0) {
+        uploaded = uploaded[0].textContent;
+        thumb = thumb[0].textContent;
         $('.photothumbs h2').remove();
         var img =
           $('<img class="unassigned-photo"/>')

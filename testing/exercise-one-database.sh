@@ -62,9 +62,6 @@ run_tests() {
 
     `dirname $0`/test-messaging.sh "$BASE_URL"
 
-############################## Racing Groups and Divisions ##############################
-    `dirname $0`/test-divisions.sh "$BASE_URL"
-
 ############################## Master Schedule ##############################
     `dirname $0`/reset-database.sh "$BASE_URL"
     `dirname $0`/import-roster.sh "$BASE_URL"
@@ -81,7 +78,6 @@ run_tests() {
 
     `dirname $0`/test-aggregate-rounds.sh "$BASE_URL"
     `dirname $0`/test-aggregate-classes.sh "$BASE_URL"
-    `dirname $0`/test-aggregate-nonracing.sh "$BASE_URL"
 
 ############################## Snapshot Export and Import ##############################
     `dirname $0`/reset-database.sh "$BASE_URL"
@@ -111,10 +107,6 @@ run_tests() {
     fi
 
     rm $SNAPSHOT
-
-    tput setaf 2  # green text
-    echo "<<<<<<<<<<<<<<<<<<<<<<<< Test run complete >>>>>>>>>>>>>>>>>>>>>>>>"
-    tput setaf 0  # black text
 }
 
 rm `dirname $0`/*.curl 2>&1 || true
@@ -124,15 +116,15 @@ if [ "$DBTYPE" == "none" ] ; then
 elif [ "$DBTYPE" == "sqlite" ] ; then
     DBPATH=${1:-/Library/WebServer/Documents/xsite/local/trial.sqlite}
     prepare_for_setup
-    curl_postj action.php \
+    curl_post action.php \
         "action=setup.nodata&connection_string=sqlite:$DBPATH&dbuser=&dbpass=" \
-        | check_jsuccess
+        | check_success
     run_tests
 elif [ "$DBTYPE" == "access" ] ; then
     prepare_for_setup
-    curl_postj action.php \
+    curl_post action.php \
               "action=setup.nodata&connection_string=odbc:DSN=gprm;Exclusive=NO&dbuser=&dbpass=" \
-        | check_jsuccess
+        | check_success
 
     # Access databases can't load a database snapshot, because it doesn't allow
     # primary key fields to be rewritten (I guess):

@@ -104,11 +104,12 @@ function on_new_scene() {
       var name = $("#new_scene_name").val();
       $.ajax('action.php',
              {type: 'POST',
-              data: {action: 'scene.add',
+              data: {action: 'scene.new',
                      name: name},
               success: function(data) {
-                if (data.hasOwnProperty('scene-id')) {
-                  var sceneid = data['scene-id'];
+                var sceneid = data.getElementsByTagName('scene');
+                if (sceneid.length > 0) {
+                  sceneid = sceneid[0].getAttribute('id');
                   g_all_scenes.push({sceneid: sceneid,
                                      name: name,
                                      kiosks: []});

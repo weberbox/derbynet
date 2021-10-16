@@ -1,5 +1,6 @@
+<just-results>
  <?php
-require_once('inc/json-current-heat.inc');
+require_once('inc/current-heat.inc');
 require_once('inc/autoadvance.inc');
 require_once('inc/ordinals.inc');
 
@@ -10,14 +11,13 @@ $now_running = get_running_round();
 // $_GET['roundid']
 $roundid = $now_running['roundid'];
 if (isset($_GET['roundid'])) $roundid = $_GET['roundid'];
-$with_details = isset($_GET['details']);  // Set for testing
+$with_details = isset($_GET['details']);
 
-json_out('schedule-signature', schedule_signature());
+write_signatures();
 
 $use_points = read_raceinfo_boolean('use-points');
 $time_format = get_finishtime_formatting_string();
 
-$results = array();
 $stmt = $db->prepare('SELECT'
                      .' resultid, Rounds.roundid, heat, lane, racerid, finishtime, finishplace, completed'
                      .' FROM Rounds'
@@ -37,17 +37,20 @@ foreach ($stmt as $row) {
   } else {
     $val = sprintf($time_format, $row['finishtime']);
   }
-  $result = $with_details ? $row : array('resultid' => $row['resultid']);
-  $result['outcome'] = $val;
-  $results[] = $result;
-}
-json_out('results', $results);
+  $details = '';
+  if ($with_details) {
+    $details = " roundid='".$row['roundid']."' heat='".$row['heat']."' lane='".$row['lane']."'";
+    $details .= " racerid='".$row['racerid']."'";
+  }
 
-json_out('current-heat', json_current_heat($now_running));
+  echo "<result resultid='".$row['resultid']."'$details outcome='".$val."'/>\n";
+}
+
+emit_current_heat($now_running);
 
 $next = get_next_heat($now_running, 'next');
 if ($next !== false) {
-  json_out('next-heat', array('roundid' => $next['roundid'],
-                              'heat' => $next['heat']));
+  echo '  <next-heat roundid="'.$next['roundid'].'" heat="'.$next['heat'].'"/>'."\n";
 }
 ?>
+</just-results>

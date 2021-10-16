@@ -51,22 +51,24 @@ $sql = 'SELECT racerid, firstname, lastname, carnumber, carname, imagefile,'
 
 $stmt = $db->query($sql);
 
-$racers = array();
+echo "<racers>\n";
 foreach ($stmt as $row) {
-  $racers[] = array('racerid' => $row['racerid'],
-                    'firstname' => $row['firstname'],
-                    'lastname' => $row['lastname'],
-                    'carnumber' => $row['carnumber'],
-                    'carname' => $row['carname'],
-                    'headshot' => $headshot_render->render_url($row['imagefile']),
-                    'car_photo' => $carphoto_render->render_url($row['imagefile']),
-                    'classid' => $row['classid'],
-                    'class' => $row['class'],
-                    'rankid' => $row['rankid'],
-                    'rank' => $row['rank'],
-                    'passed' => $row['passedinspection'] ? true : false,
-                    'seq' => $row['seq']);
+  echo '  <racer';
+  echo ' racerid="'.$row['racerid'].'"';
+  echo ' firstname="'.htmlspecialchars($row['firstname'], ENT_QUOTES, 'UTF-8').'"';
+  echo ' lastname="'.htmlspecialchars($row['lastname'], ENT_QUOTES, 'UTF-8').'"';
+  echo ' carnumber="'.$row['carnumber'].'"';
+  echo ' carname="'.htmlspecialchars($row['carname'], ENT_QUOTES, 'UTF-8').'"';
+  echo ' headshot="'.$headshot_render->render_url($row['imagefile']).'"';
+  echo ' car_photo="'.$carphoto_render->render_url($row['imagefile']).'"';
+  echo ' classid="'.$row['classid'].'"';
+  echo ' class="'.htmlspecialchars($row['class'], ENT_QUOTES, 'UTF-8').'"';
+  echo ' rankid="'.$row['rankid'].'"';
+  echo ' rank="'.htmlspecialchars($row['rank'], ENT_QUOTES, 'UTF-8').'"';
+  echo ' passed="'.$row['passedinspection'].'"';
+  echo ' exclude="'.$row['exclude'].'"';
+  echo ' seq="'.$row['seq'].'"';
+  echo "/>\n";
 }
-json_out('racers', $racers);
-
+echo "</racers>\n";
 ?>

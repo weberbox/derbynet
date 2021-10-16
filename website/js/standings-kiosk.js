@@ -98,10 +98,13 @@ $(function() {
               data: {
                 query: 'standings.reveal'
               },
+              dataType: "xml",
               success: function(data) {
                 var changed = false;
-                if (data.hasOwnProperty('catalog-entry')) {
-                  var entry = data['catalog-entry'];
+
+                var catalog_entry_element = data.getElementsByTagName("catalog-entry");
+                if (catalog_entry_element.length > 0) {
+                  var entry = JSON.parse(catalog_entry_element[0].getAttribute("json"));
                   if (entry.key != poller.catalog_entry.key) {
                     poller.catalog_entry = entry;
                     changed = true;
@@ -111,8 +114,15 @@ $(function() {
                   }
                 }
 
-                if (data.hasOwnProperty('exposed')) {
-                  var new_exposed = data.exposed == '' ? 0 : data.exposed;
+                var exposed_element = data.getElementsByTagName('exposed');
+                if (exposed_element.length > 0) {
+                  var new_exposed = 0;
+                  if (exposed_element[0].getAttribute('count') == "") {
+                    new_exposed = false;
+                  } else {
+                    new_exposed = Number(exposed_element[0].getAttribute('count'));
+                  }
+
                   if (new_exposed !== poller.exposed) {
                     changed = true;
                     poller.exposed = new_exposed;

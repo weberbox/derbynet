@@ -43,14 +43,30 @@ var AwardPoller = {
     setTimeout(function() { AwardPoller.query_for_current_award(); }, 500 /* ms. */);
   },
 
+  parse_award: function(data) {
+    var award_xml = data.getElementsByTagName('award')[0];
+    if (!award_xml) {
+      return false;
+    }
+    return {key: award_xml.getAttribute('key'),
+            reveal: award_xml.getAttribute('reveal') == 'true',
+            awardname: award_xml.getAttribute('awardname'),
+            carnumber: award_xml.getAttribute('carnumber'),
+            carname: award_xml.getAttribute('carname'),
+            recipient: award_xml.getAttribute('recipient'),
+            subgroup: award_xml.getAttribute('subgroup'),
+            headphoto: award_xml.getAttribute('headphoto'),
+            carphoto: award_xml.getAttribute('carphoto')};
+  },
+
   process_current_award: function(data) {
-    if (!data.hasOwnProperty('current')) {
+    var award = this.parse_award(data);
+    if (!award) {
       $("#awardname").text("Award Presentation");
       $(".reveal").hide();
       return;
     }
 
-    var award = data.current;
     if (this.current_award_key != award.key) {
       $(".reveal").hide();
 

@@ -1,38 +1,39 @@
 // TODO Ordering in the face of speed trophies?
 
-function awardtypeid_to_awardtype(awardtypeid, awardtypes) {
-  for (var i = 0; i < awardtypes.length; ++i) {
-    if (awardtypes[i].awardtypeid == awardtypeid) {
-      return awardtypes[i].awardtype;
+function awardtypeid_to_awardtype(awardtypeid, dataxml) {
+  var types = dataxml.getElementsByTagName('awardtype');
+  for (var i = 0; i < types.length; ++i) {
+    if (types[i].getAttribute("awardtypeid") == awardtypeid) {
+      return types[i].getAttribute("awardtype");
     }
   }
   return "Can't resolve awardtypeid " + awardtypeid;
 }
 
-function classid_to_class(classid, classes) {
+function classid_to_class(classid, dataxml) {
   if (classid == 0) return "";
-  for (var i = 0; i < classes.length; ++i) {
-    if (classes[i].classid == classid) {
-      return classes[i].name;
+  var types = dataxml.getElementsByTagName('class');
+  for (var i = 0; i < types.length; ++i) {
+    if (types[i].getAttribute("classid") == classid) {
+      return types[i].getAttribute("name");
     }
   }
   return "Can't resolve classid " + classid;
 }
 
-function rankid_to_rank(rankid, classes) {
+function rankid_to_rank(rankid, dataxml) {
   if (rankid == 0) return "";
-  for (var i = 0; i < classes.length; ++i) {
-    for (var j = 0; j < classes[i].subgroups.length; ++j) {
-      if (classes[i].subgroups[j].rankid == rankid) {
-        return classes[i].subgroups[j].name;
-      }
+  var types = dataxml.getElementsByTagName('rank');
+  for (var i = 0; i < types.length; ++i) {
+    if (types[i].getAttribute("rankid") == rankid) {
+      return types[i].getAttribute("name");
     }
   }
   return "Can't resolve rankid " + rankid;
 }
 
-function update_awards(data) {
-  var awards = data.awards;
+function update_awards(dataxml) {
+  var awards = dataxml.getElementsByTagName('award');
 
   if ($("#all_awards li").length < awards.length) {
     while ($("#all_awards li").length < awards.length) {
@@ -58,39 +59,40 @@ function update_awards(data) {
     if (i >= awards.length) {
       $(this).remove();
     } else {
-      $(this).attr("data-awardid", awards[i].awardid);
-      if ($(this).attr("data-awardname") != awards[i].awardname) {
-        $(this).find('span.awardname').text(awards[i].awardname);
-        $(this).attr("data-awardname", awards[i].awardname);
+      $(this).attr("data-awardid", awards[i].getAttribute("awardid"));
+      if ($(this).attr("data-awardname") != awards[i].getAttribute("awardname")) {
+        $(this).find('span.awardname').text(awards[i].getAttribute("awardname"));
+        $(this).attr("data-awardname", awards[i].getAttribute("awardname"));
       }
-      if ($(this).attr("data-awardtypeid") != awards[i].awardtypeid) {
-        $(this).attr("data-awardtypeid", awards[i].awardtypeid);
+      if ($(this).attr("data-awardtypeid") != awards[i].getAttribute("awardtypeid")) {
+        $(this).attr("data-awardtypeid", awards[i].getAttribute("awardtypeid"));
         $(this).find('.awardtype').text(
-          awardtypeid_to_awardtype(awards[i].awardtypeid, data['award-types']));
+          awardtypeid_to_awardtype(awards[i].getAttribute("awardtypeid"), dataxml));
       }
 
-      if ($(this).attr("data-classid") != awards[i].classid) {
-        $(this).attr("data-classid", awards[i].classid);
-        var classname = classid_to_class(awards[i].classid, data.classes);
+      if ($(this).attr("data-classid") != awards[i].getAttribute("classid")) {
+        $(this).attr("data-classid", awards[i].getAttribute("classid"));
+        var classname = classid_to_class(awards[i].getAttribute("classid"), dataxml);
         $(this).attr("data-class", classname);
         $(this).find('.classname').text(classname);
       }
       
-      if ($(this).attr("data-rankid") != awards[i].rankid) {
-        var rankid = awards[i].rankid;
+      if ($(this).attr("data-rankid") != awards[i].getAttribute("rankid")) {
+        var rankid = awards[i].getAttribute("rankid");
         $(this).attr("data-rankid", rankid);
-        var rankname = rankid_to_rank(rankid, data.classes);
+        var rankname = rankid_to_rank(rankid, dataxml);
         $(this).attr("data-rank", rankname);
         if (rankid != 0) {
           $(this).find('.rankname').text(rankname + ', ');
         }
       }
 
-      if ($(this).attr("data-racerid") != awards[i].racerid) {
-        $(this).attr("data-racerid", awards[i].racerid);
+      if ($(this).attr("data-racerid") != awards[i].getAttribute("racerid")) {
+        $(this).attr("data-racerid", awards[i].getAttribute("racerid"));
         $(this).find('.recipient')
           .empty()
-          .text(awards[i].firstname + " " + awards[i].lastname);
+          .text(awards[i].getAttribute("firstname") + " " +
+                awards[i].getAttribute("lastname"));
       }
     }
   });
@@ -107,7 +109,6 @@ function handle_new_award() {
     close_modal('#award_editor_modal');
     $.ajax(g_action_url,
            {type: 'POST',
-            // award.edit
             data: $('#award_editor_form').serialize(),
             success: function(data) {
               update_awards(data);
@@ -134,7 +135,6 @@ function handle_edit_award(list_item) {
     close_modal('#award_editor_modal');
     $.ajax(g_action_url,
            {type: 'POST',
-            // award.edit
             data: $('#award_editor_form').serialize(),
             success: function(data) {
               update_awards(data);

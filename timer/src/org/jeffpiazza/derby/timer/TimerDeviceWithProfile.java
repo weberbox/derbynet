@@ -18,12 +18,7 @@ public class TimerDeviceWithProfile extends TimerDeviceBase
     super(portWrapper);
     this.profile = profile;
 
-    portWrapper.setEndOfLine(profile.options.eol);
-  }
-
-  @Override
-  public String humanName() {
-    return profile.name;
+    portWrapper.setEndOfLine(profile.end_of_line);
   }
 
   @Override
@@ -46,6 +41,8 @@ public class TimerDeviceWithProfile extends TimerDeviceBase
 
   private TimerResult result;
 
+  ScheduledEventsQueue queue = new ScheduledEventsQueue();
+
   // If non-zero, marks the time at which to generate an OVERDUE event
   // if we're still in a RUNNING state.  Leaving the RUNNING state sets this
   // back to zero.
@@ -58,19 +55,19 @@ public class TimerDeviceWithProfile extends TimerDeviceBase
   protected static final int GIVE_UP_AFTER_OVERDUE_MS = 1000;
 
   public void abortHeat() throws SerialPortException {
-    Event.send(Event.ABORT_HEAT_RECEIVED);
+    Event.trigger(Event.ABORT_HEAT_RECEIVED);
   }
 
   @Override
   public void prepareHeat(int roundid, int heat, int laneMask)
       throws SerialPortException {
     lanemask = laneMask;
-    if (lastFinishTime == 0 || profile.options.display_hold_time_ms == 0) {
-      Event.send(Event.PREPARE_HEAT_RECEIVED);
+    if (lastFinishTime == 0 || profile.display_hold_time_ms == 0) {
+      Event.trigger(Event.PREPARE_HEAT_RECEIVED);
     } else {
       // This will defer acting on the prepareHeat message until some
       // minimum amount of time after the last heat finished.
-      Event.sendAt(lastFinishTime + profile.options.display_hold_time_ms,
+      queue.addAt(lastFinishTime + profile.display_hold_time_ms,
                   Event.PREPARE_HEAT_RECEIVED);
     }
   }
@@ -82,10 +79,10 @@ public class TimerDeviceWithProfile extends TimerDeviceBase
 
   @Override
   public boolean probe() throws SerialPortException {
-    if (!portWrapper.setPortParams(profile.params.baud,
-                                   profile.params.data,
-                                   profile.params.stop,
-                                   profile.params.parity,
+    if (!portWrapper.setPortParams(profile.portParams.baudRate,
+                                   profile.portParams.dataBits,
+                                   profile.portParams.stopBits,
+                                   profile.portParams.parity,
                                    !Flag.clear_rts_dtr.value(),
                                    !Flag.clear_rts_dtr.value())) {
       return false;
@@ -108,17 +105,17 @@ public class TimerDeviceWithProfile extends TimerDeviceBase
     long deadline = System.currentTimeMillis() + PROBER_RESPONSE_TIME_MS;
     portWrapper.write(profile.prober.probe);
     int pi = 0;
-    Pattern p = Pattern.compile(profile.prober.responses[pi++]);
+    Pattern p = Pattern.compile(profile.prober.response_patterns[pi++]);
     String s;
     while ((s = portWrapper.next(deadline)) != null) {
       has_ever_spoken = true;
       Matcher m = p.matcher(s);
       if (m.find()) {
-        if (pi >= profile.prober.responses.length) {
+        if (pi >= profile.prober.response_patterns.length) {
           timerIdentifier = s;
           return true;
         } else {
-          p = Pattern.compile(profile.prober.responses[pi++]);
+          p = Pattern.compile(profile.prober.response_patterns[pi++]);
         }
       }
     }
@@ -126,11 +123,11 @@ public class TimerDeviceWithProfile extends TimerDeviceBase
   }
 
   protected void setUp() throws SerialPortException {
-    for (Profile.Detector detector_config : profile.matchers) {
+    for (Profile.Detector detector_config : profile.detectors) {
       portWrapper.registerDetector(new ProfileDetector(detector_config));
     }
     if (profile.gate_watcher != null) {
-      for (Profile.Detector detector_config : profile.gate_watcher.matchers) {
+      for (Profile.Detector detector_config : profile.gate_watcher.detectors) {
         ProfileDetector detector = new ProfileDetector(detector_config, false);
         gate_watch_detectors.add(detector);
         portWrapper.registerDetector(detector);
@@ -142,7 +139,7 @@ public class TimerDeviceWithProfile extends TimerDeviceBase
     }
 
     for (Profile.Query query : profile.setup_queries) {
-      for (Profile.Detector detector_config : query.matchers) {
+      for (Profile.Detector detector_config : query.detectors) {
         ProfileDetector detector = new ProfileDetector(detector_config, false);
         detector.activateFor(COMMAND_DRAIN_MS);
         portWrapper.registerDetector(detector);
@@ -174,20 +171,20 @@ public class TimerDeviceWithProfile extends TimerDeviceBase
   protected void maskLanes(int lanemask) {
     try {
       if (profile.heat_prep != null) {
-        if (profile.heat_prep.unmask != null) {
-          portWrapper.write(profile.heat_prep.unmask);
-          int nlanes = Math.max(detected_lane_count, profile.options.max_lanes);
+        if (profile.heat_prep.unmask_command != null) {
+          portWrapper.write(profile.heat_prep.unmask_command);
+          int nlanes = Math.max(detected_lane_count, profile.max_lanes);
           for (int lane = 0; lane < nlanes; ++lane) {
             if ((lanemask & (1 << lane)) == 0) {
               drainForMs();
-              portWrapper.write(profile.heat_prep.mask
-                  + (char) (profile.heat_prep.lane + lane));
+              portWrapper.write(profile.heat_prep.mask_command
+                  + (char) (profile.heat_prep.first_lane + lane));
             }
           }
         }
-        if (profile.heat_prep.reset != null) {
+        if (profile.heat_prep.reset_command != null) {
           drainForMs();
-          portWrapper.write(profile.heat_prep.reset);
+          portWrapper.write(profile.heat_prep.reset_command);
         }
         drainForMs();
       }
@@ -202,8 +199,9 @@ public class TimerDeviceWithProfile extends TimerDeviceBase
     return detected_lane_count;
   }
 
+  // This method really belongs on TimerDeviceWithProfile
   public void onEvent(Event event, String[] args) {
-    Profile.CommandSequence custom = profile.on.get(event);
+    Profile.CommandSequence custom = profile.custom_handlers.get(event);
     if (custom != null) {
       try {
         sendCommandSequence(custom);
@@ -213,9 +211,6 @@ public class TimerDeviceWithProfile extends TimerDeviceBase
     }
     switch (event) {
       case PREPARE_HEAT_RECEIVED:
-        // prepareHeat was called when the server sent its message; then
-        // prepareHeat set a delayed event to apply the lane mask and reset the
-        // timer
         maskLanes(lanemask);
         break;
       case ABORT_HEAT_RECEIVED:
@@ -223,9 +218,8 @@ public class TimerDeviceWithProfile extends TimerDeviceBase
         roundid = heat = 0;
         break;
       case RACE_STARTED:
-        if (profile.options.max_running_time_ms != 0) {
-          overdueTime = System.currentTimeMillis()
-              + profile.options.max_running_time_ms;
+        if (profile.max_running_time_ms != 0) {
+          overdueTime = System.currentTimeMillis() + profile.max_running_time_ms;
         }
         invokeRaceStartedCallback();
         break;
@@ -247,7 +241,7 @@ public class TimerDeviceWithProfile extends TimerDeviceBase
             result.setLane(lane, args[1], args[2].charAt(0) - '!' + 1);
           }
           if (result.isFilled()) {
-            Event.send(Event.RACE_FINISHED);
+            Event.trigger(Event.RACE_FINISHED);
           }
         }
         break;
@@ -263,7 +257,7 @@ public class TimerDeviceWithProfile extends TimerDeviceBase
         String msg = Timestamp.string() + ": ****** Race timed out *******";
         LogWriter.trace(msg);
         System.err.println(msg);
-        Event.sendAfterMs(GIVE_UP_AFTER_OVERDUE_MS, Event.GIVING_UP);
+        queue.addAfterMs(GIVE_UP_AFTER_OVERDUE_MS, Event.GIVING_UP);
         break;
       case GIVING_UP:
         break;
@@ -279,13 +273,15 @@ public class TimerDeviceWithProfile extends TimerDeviceBase
       Event.register(sm);
     }
 
+    queue.poll();
+
     if (sm.state() == StateMachine.State.RUNNING && overdueTime != 0
         && System.currentTimeMillis() >= overdueTime) {
-      Event.send(Event.OVERDUE);
+      Event.trigger(Event.OVERDUE);
     }
 
     {
-      Profile.CommandSequence seq = profile.poll.get(sm.state());
+      Profile.CommandSequence seq = profile.custom_poll_actions.get(sm.state());
       if (seq != null) {
         sendCommandSequence(seq);
       }
@@ -293,18 +289,16 @@ public class TimerDeviceWithProfile extends TimerDeviceBase
 
     if (profile.gate_watcher != null
         && sm.state() != StateMachine.State.RUNNING) {
-      // Required in MARK in order to energize the gate switch and detect
-      // open-to-closed.  (Actually the sequence is:
-      // PREPARE_HEAT, close the gate (undetected), reset laser gate,
-      // detect gate now closed.)
+      // Required in MARK in order to energize the gate switch and detect open-to-closed.
+      // (Actually the sequence is: PREPARE_HEAT, close the gate (undetected), reset laser gate, detect gate now closed.)
+      portWrapper.write(profile.gate_watcher.command);
       for (ProfileDetector detector : gate_watch_detectors) {
         detector.activateFor(POLL_RESPONSE_DEADLINE_MS);
       }
-      portWrapper.write(profile.gate_watcher.command);
     }
 
     while (portWrapper.next(deadline) != null) {
-      // Let the matchers run, and pick up any hanging lines
+      // Let the detectors run, and pick up any hanging lines
     }
   }
 

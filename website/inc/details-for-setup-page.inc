@@ -65,11 +65,9 @@ function inspect_database() {
                   'group_label_lc' => 'den',
                   'nracers' => 0,
                   'dens' => array(),
-                  'div_rule' => 'by-division',
                   'nawards' => 0,
                   'nheats' => 0,
                   'nresults' => 0,
-                  'fake-racers' => 0,
                   'settings_icon' => 'unknown',
                   'settings_details' => 'No photo directories defined.',
                   'writable' => false
@@ -79,8 +77,8 @@ function inspect_database() {
   } else {
     try {
       $schema_version = schema_version();
-      $result['group_label'] = read_raceinfo('division-label', 'Den');
-      $result['group_label_lc'] = strtolower($result['group_label_rc']);
+      $result['group_label'] = group_label();
+      $result['group_label_lc'] = group_label_lc();
       
       $result['nracers'] = read_single_value('SELECT COUNT(*) FROM RegistrationInfo', array());
       $result['nawards'] = read_single_value('SELECT COUNT(*) FROM Awards', array());
@@ -98,7 +96,6 @@ function inspect_database() {
         $dens[] = $row['class'];
       }
       $result['dens'] = $dens;
-      $result['div_rule'] = read_raceinfo('group-formation-rule', 'by-division');
 
       if ($schema_version == expected_schema_version()) {
         $result['schema_status'] = "ok";
@@ -240,11 +237,9 @@ function diagnose_configuration() {
                'group_label_lc' => 'den',
                'nracers' => 0,
                'dens' => array(),
-               'div_rule' => 'by-division',
                'nawards' => 0,
                'nheats' => 0,
                'nresults' => 0,
-               'fake-racers' => 0,
                'settings_icon' => 'unknown',
                'settings_details' => 'No photo directories defined.',
                'writable' => false
@@ -290,20 +285,13 @@ function build_setup_page_details() {
                                  "<p>There ".plural_to_be($schema['nracers'], "racer", "racers")." registered."
                                  ."  (Visit the <a href=\"checkin.php\">Check-In page</a>"
                                  ." to enter individual racers.)</p>\n"),
-               'groups' => array('status' => count($schema['dens']) == 0 ? "unknown" : "ok",
-                                 'label' => $schema['group_label'],
-                                 'plural' => plural($schema['group_label']),
-                                 'details' =>
-                                 "<p>".
-                                 ($schema['div_rule'] == 'by-division'
-                                  ? "Racing by ".$schema['group_label_lc'].": "
-                                  : ($schema['div_rule'] == 'one-group'
-                                     ? "Racing as one big group: "
-                                     : "Customized groups: ")).
-                                 (count($schema['dens']) == 0
-                                  ? "There are no ".plural($schema['group_label_lc'])." defined."
-                                  : implode(", ", $schema['dens']))
-                                 ."</p>\n"),
+               'classes' => array('status' => count($schema['dens']) == 0 ? "unknown" : "ok",
+                                  'label' => $schema['group_label'],
+                                  'plural' => plural($schema['group_label']),
+                                  'details' =>
+                                  count($schema['dens']) == 0
+                                  ? "<p>There are no ".plural($schema['group_label_lc'])." defined.</p>\n"
+                                  : "<p>".implode(", ", $schema['dens'])."</p>\n"),
                'awards' => array('status' => $schema['nawards'] == 0 ? "unknown" : "ok",
                                  'details' => "<p>There ".plural_to_be($schema['nawards'], "award", "awards")." defined."
                                  ."  (Visit the <a href=\"awards-editor.php\">Awards Editor page</a>"

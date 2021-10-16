@@ -4,12 +4,14 @@
 //
 // Won't allow deleting the last rank within the class (delete the class instead).
 // Won't allow deleting a rank with racers.
-require_once('inc/json-classes.inc');
+require_once('inc/classes-xml.inc');
 require_once('inc/events.inc');
 
 $rankid = $_POST['rankid'];
 
 if (have_permission(SET_UP_PERMISSION)) {
+  start_response();
+
   try {
     $ok = true;
 
@@ -19,7 +21,7 @@ if (have_permission(SET_UP_PERMISSION)) {
                                   .'                  WHERE rankid = :rankid)',
                                   array(':rankid' => $rankid));
       if ($nranks < 2) {
-        json_failure('last-rank', "Can't delete the last rank in a class");
+        echo "\n<failure code='last-rank'>Can't delete the last rank in a class</failure>\n";
         $ok = false;
       }
     }
@@ -27,7 +29,7 @@ if (have_permission(SET_UP_PERMISSION)) {
       $nracers = read_single_value('SELECT COUNT(*) FROM RegistrationInfo WHERE rankid = :rankid',
                                    array(':rankid' => $rankid));
       if ($nracers > 0) {
-        json_failure('existing-racers', "Unable to delete a rank with racers");
+        echo "\n<failure code='existing-racers'>Unable to delete a rank with racers</failure>\n";
         $ok = false;
       }
     }
@@ -36,18 +38,20 @@ if (have_permission(SET_UP_PERMISSION)) {
       record_event_delete_rank(-1, $rankid);
       $stmt = $db->prepare('DELETE FROM Ranks WHERE rankid = :rankid');
       if (!$stmt->execute(array(':rankid' => $rankid))) {
-        json_failure('delete-ranks', "Unable to delete Ranks entries");
+        echo "\n<failure code='delete-ranks'>Unable to delete Ranks entries</failure>\n";
         $ok = false;
       }
     }
     if ($ok) {
-      json_out('classes', json_all_classes());
-      json_success();
+      echo "<success/>\n";
+      emit_all_classes();
     }
   } catch (Exception $e) {
-    json_failure('sql', $e->getMessage());
+    echo "<failure code='sql'>".htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8')."</failure>\n";
   }
+
+  end_response();
 } else {
-  json_not_authorized();
+  not_authorized();
 }
 ?>

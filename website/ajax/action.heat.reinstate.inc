@@ -5,8 +5,10 @@ require_once('inc/write-heat-results.inc');
 require_once('inc/racing-state.inc');
 require_once('inc/events.inc');
 
+start_response();
+
 if (!have_permission(CONTROL_RACE_PERMISSION)) {
-  json_not_authorized();
+  not_authorized_body();
 } else {
   $ok = true;
   $last_heat = get_last_heat();
@@ -34,8 +36,9 @@ if (!have_permission(CONTROL_RACE_PERMISSION)) {
   }
   clear_last_heat();
   set_racing_state(0);
-
-  json_success();
-  require('ajax/query.poll.coordinator.inc');
 }
+
+require('ajax/query.poll.coordinator.inc');
+
+end_response();
 ?>

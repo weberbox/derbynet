@@ -90,11 +90,7 @@ function advance_heat(&$current, $requested, $report_failure) {
 
   $ok = ($next !== false);
   if (!$ok && $report_failure) {
-    if ($report_failure == 'json') {
-      json_failure('nosuchheat', "No $requested heat available.");
-    } else {
-      echo '<failure code="nosuchheat">No '.$requested.' heat available.</failure>';
-    }
+    echo '<failure code="nosuchheat">No '.$requested.' heat available.</failure>';
   }
 
   if ($ok && $next['roundid'] != TIMER_TEST_ROUNDID) {
@@ -117,11 +113,7 @@ function advance_heat(&$current, $requested, $report_failure) {
       perform_playlist_after_round($current['roundid']);
     }
     if ($report_failure) {
-      if ($report_failure == 'json') {
-        json_failure('nosuchheat', "No heat $next[heat] scheduled for roundid $next[roundid].");
-      } else {
-        echo '<failure code="nosuchheat">No heat '.@$next['heat'].' scheduled for roundid '.@$next['roundid'].'</failure>';
-      }
+      echo '<failure code="nosuchheat">No heat '.@$next['heat'].' scheduled for roundid '.@$next['roundid'].'</failure>';
     }
   }
 

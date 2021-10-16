@@ -21,6 +21,8 @@ require_once('inc/photo-config.inc');
 require_once('inc/barcode.inc');
 require_once('inc/events.inc');
 
+start_response();
+
 function widen_and_clip(&$v, &$width, $scale, $max) {
   $original_width = $width;
   $width = round($width * $scale);
@@ -37,7 +39,7 @@ function widen_and_clip(&$v, &$width, $scale, $max) {
 }
 
 if (!have_permission(PHOTO_UPLOAD_PERMISSION)) {
-  json_not_authorized();
+  not_authorized_body();
 } else {
   $photo = $_FILES['photo'];
   $photo_repository = photo_repository(isset($_POST['repo']) ? $_POST['repo'] : 'head');
@@ -64,11 +66,11 @@ if (!have_permission(PHOTO_UPLOAD_PERMISSION)) {
       // may help. Introduced in PHP 5.2.0.
     }
 
-    json_failure('upload_'.$photo['error'], $msg);
+    echo '<failure code="upload_'.$photo['error'].'">'.$msg.'</failure>'."\n";
   } else if ($photo['type'] != 'image/png' &&
              $photo['type'] != 'image/jpeg' &&
              $photo['type'] != 'image/gif') {
-    json_failure('upload_image_type', "Unacceptable file type: ".$photo['type']);
+    echo "<failure code=\"upload_image_type\">Unacceptable file type: ".$photo['type']."</failure>\n";
   } else {
     $photo_name = basename(urldecode($photo['name']));
     // Filter out special characters from the filename
@@ -81,7 +83,7 @@ if (!have_permission(PHOTO_UPLOAD_PERMISSION)) {
       ++$attempt;
     }
     if ($target_name != $photo_name) {
-      json_out('filename-change', $target);
+      echo "\n".'<filename_changed>'.htmlspecialchars($target_name, ENT_QUOTES, 'UTF-8').'</filename_changed>'."\n";
     }
 
     if (move_uploaded_file($photo['tmp_name'], $photo_dir.DIRECTORY_SEPARATOR.$target_name)) {
@@ -125,13 +127,13 @@ if (!have_permission(PHOTO_UPLOAD_PERMISSION)) {
             // Use the cropped path now rather than the original if we record
             // the file name in the database.
             $path_render = $photo_repository->lookup(RENDER_CROPPED);
-            json_out('cropped', true);
+            echo "<cropped/>\n";
           } else {
-            json_out('warning', "No face detected for autocrop.");
+            echo "\n<warning>No face detected for autocrop.</warning>\n";
           }
           imagedestroy($original);
         } catch (Exception $e) {
-          json_out('warning', $e->getMessage());
+          echo "\n<warning>".htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8')."</warning>\n";
         }
       }
 
@@ -143,7 +145,7 @@ if (!have_permission(PHOTO_UPLOAD_PERMISSION)) {
                                      .' WHERE carnumber = :carno',
                                      array(':carno' => $_POST['carnumber']));
         if (!$racerid) {
-          json_failure('no-such-car', "No car numbered ".$_POST['carnumber']." found.");
+          echo "<failure code='no-such-car'>No car numbered ".$_POST['carnumber']." found.</failure>\n";
           $success = false;
         }
       } else if (isset($_POST['barcode'])) {
@@ -151,12 +153,13 @@ if (!have_permission(PHOTO_UPLOAD_PERMISSION)) {
           // For an upload test, we delete the photo after uploading, and report success.
           @unlink($photo_dir.DIRECTORY_SEPARATOR.$target_name);
           @unlink($cropped_path = $photo_repository->lookup(RENDER_CROPPED)->target_file_path($target_name));
+          echo "<test-ok/>\n";
         } else if ($_POST['barcode'] == 'PWDuploadonly') {
           // Upload photo without associating with a racer
         } else {
           $racerid = barcode_to_racerid($_POST['barcode']);
           if (!$racerid) {
-            json_failure('barcode', "Barcode not recognized.");
+            echo '<failure code="barcode">Barcode not recognized</failure>'."\n";
             $success = false;
           }
         }
@@ -178,26 +181,30 @@ if (!have_permission(PHOTO_UPLOAD_PERMISSION)) {
         $row = array('racerid' => $racerid,
                      $column_name => $path);
         // This is assuming that there's a 'checkin' render, which isn't the case if we're doing car photos
-        json_out('photo-url', $photo_repository->url_for_racer($row, RENDER_CHECKIN));
+        echo '<photo-url>'.$photo_repository->url_for_racer($row, RENDER_CHECKIN).'</photo-url>'."\n";
 
         if (!$success) {
-          json_failure('assign_photo', "Couldn\'t assign photo to racer.");
+          echo '<failure code="assign_photo">Couldn\'t assign photo to racer.</failure>'."\n";
         }
       }
 
       if ($success) {
-        json_out('uploaded', $target_name);
-        json_out('thumbnail', $photo_repository->lookup(RENDER_THUMBNAIL)->render_url($target_name));
-        json_success();
+        echo "<success/>\n";
+        echo "<uploaded>".htmlspecialchars($target_name, ENT_QUOTES, 'UTF-8')."</uploaded>\n";
+        echo "<thumbnail>".htmlspecialchars($photo_repository->lookup(RENDER_THUMBNAIL)->render_url($target_name),
+                                            ENT_QUOTES, 'UTF-8')."</thumbnail>\n";
       }
     } else {
-      json_failure('move_uploaded',
-                   "move_uploaded_file failed."
-                   .(is_readable($photo_dir) ? '' :
-                     '  <b>Check settings: photo directory is not readable.</b>')
-                   .(is_writable($photo_dir) ? '' :
-                     '  <b>Check settings: photo directory is not writable.</b>'));
+      echo '<failure code="move_uploaded">move_uploaded_file failed.';
+      if (!is_readable($photo_dir)) {
+        echo '  <b>Check settings: photo directory is not readable.</b>';
+      }
+      if (!is_writable($photo_dir)) {
+        echo '  <b>Check settings: photo directory is not writable.</b>';
+      }
+      echo '</failure>'."\n";
     }
   }
 }
+end_response();
 ?>

@@ -181,4 +181,10 @@ function schedule_signature() {
   return $result;
 }
 
+function write_signatures() {
+  foreach (schedule_signature() as $roundid => $signature) {
+    echo "<round roundid='".$roundid."'>".$signature."</round>\n";
+  }
+}
+
 ?>

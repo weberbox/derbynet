@@ -96,31 +96,25 @@ function nonracing_aggregate_classids() {
   return $results;
 }
 
-function create_aggregate_class($classname, $constituents, $rankids, $durable) {
+function create_aggregate_class($classname, $all_roundids, $durable) {
   global $db;
   $classid = create_class($classname, /* with_first_round= */ false);
 
-  if (is_array($constituents)) {
-    $constituents = implode(',', $constituents);
-  }
-  if (is_array($rankids)) {
-    $rankids = implode(',', $rankids);
+  $constituents = array();
+  $stmt = $db->prepare('SELECT DISTINCT classid FROM Rounds'
+                       .'      WHERE roundid IN ('.implode(',', $all_roundids).')');
+  $stmt->execute(array());
+  foreach ($stmt as $row) {
+    $constituents[] = $row['classid'];
   }
 
   $stmt = $db->prepare('UPDATE Classes'
                        .' SET constituents = :constituents,'
-                       .' rankids = :rankids,'
                        .' durable = :durable'
                        .' WHERE classid = :classid');
-  $stmt->execute(array(':constituents' => $constituents,
-                       ':rankids' => $rankids,
+  $stmt->execute(array(':constituents' => implode(',', $constituents),
                        ':durable' => $durable,
                        ':classid' => $classid));
-
-  $stmt = $db->prepare('INSERT INTO ConstituentClasses(antecedent, dependent) VALUES(:ante, :dep)');
-  foreach (explode(',', $constituents) as $ante) {
-    $stmt->execute(array(':ante' => $ante, ':dep' => $classid));
-  }
   
   return $classid;
 }
@@ -151,8 +145,6 @@ function maybe_clean_up_aggregate_class_for_round($roundid) {
   $stmt->execute(array(':classid' => $classid));
   if ($stmt->rowCount() > 0) {
     record_event_delete_class($classid);
-    read_single_value('DELETE FROM ConstituentClasses WHERE dependent = :classid',
-                      array(':classid' => $classid));
   }
 
   // Clean up any playlist entries for the deleted class.  When activated, a

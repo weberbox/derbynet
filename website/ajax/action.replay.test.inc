@@ -1,10 +1,14 @@
 <?php
 require_once('inc/replay.inc');
 
+start_response();
+
 if (have_permission(CONTROL_RACE_PERMISSION)) {
   send_replay_TEST();
-  json_success();
+  echo "<success/>\n";
 } else {
-  json_not_authorized();
+  not_authorized_body();
 }
+
+end_response();
 ?>

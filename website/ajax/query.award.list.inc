@@ -1,6 +1,6 @@
 <?php
-require_once('inc/json-awards.inc');
+  require_once('inc/awards-xml.inc');
 
-$adhoc = isset($_GET['adhoc']) ? $_GET['adhoc'] : 1;
-json_out_awards($adhoc);
+  // $_GET['adhoc'] = 0/1 to exclude/include ad hoc awards
+  emit_award_list(isset($_GET['adhoc']) ? $_GET['adhoc'] : 1);
 ?>

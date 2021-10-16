@@ -75,8 +75,12 @@ function make_rough_schedule($nlanes, $ncars, $n_times_per_lane, $max_runs_per_c
     apply_generator($generators[$gi], $nlanes, $ncars, $heats);
     --$n_times_per_lane;
     if ($trace) {
-      $trace[] = array('generator' => $gi,
-                       'heats' => array_slice($heats, $gi * $ncars, $ncars));
+      echo "<trace generator='".$gi."'>[\n";
+      foreach (array_slice($heats, $gi * $ncars, $ncars) as $heat) {
+        echo json_encode($heat);
+        echo ",\n";
+      }
+      echo "]</trace>\n";
     }
   }
 
@@ -91,10 +95,15 @@ function make_rough_schedule($nlanes, $ncars, $n_times_per_lane, $max_runs_per_c
         if ($k < count($psets[$gi])) {
           apply_permutation($psets[$gi][$k], $gi * $ncars, ($gi + 1) * $ncars, $heats);
           if ($trace) {
-            $trace[] = array('permutation' => $k,
-                             'generator' => $gi,
-                             'psets' => $psets[$gi][$k],
-                             'heats' => array_slice($heats, count($heats) - $ncars));
+            echo "<permutation permutation='".$k."' generator='".$gi."'>";
+            echo json_encode($psets[$gi][$k]);
+            echo "</permutation>\n";
+            echo "<trace generator='".$gi."' permutation='".$k."'>[\n";
+            foreach (array_slice($heats, count($heats) - $ncars) as $heat) {
+              echo json_encode($heat);
+              echo ",\n";
+            }
+            echo "]</trace>\n";
           }
           --$n_times_per_lane;
           $making_progress = true;
@@ -104,12 +113,18 @@ function make_rough_schedule($nlanes, $ncars, $n_times_per_lane, $max_runs_per_c
     }
   }
 
-  if ($trace) {
-    $trace[] = array('rough-schedule' => $heats);
+  if ($trace) {  // For debugging:
+    echo "<rough-schedule>\n";
+    $hi = 0;
+    foreach ($heats as $h) {
+      ++$hi;
+      echo "<heat heat='".$hi."'>".json_encode($h)."</heat>\n";
+    }
+    echo "</rough-schedule>\n";
   }
 
   if ($n_times_per_lane > 0) {
-    json_failure('cant-fulfill', "Can't fulfill");
+    echo "<failure>Can't fulfill</failure>\n";
     return array();
   }
 

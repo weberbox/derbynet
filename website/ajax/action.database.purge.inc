@@ -12,10 +12,10 @@ require_once('inc/details-for-setup-page.inc');
 require_once('inc/fake_images.inc');
 require_once('inc/events.inc');
 
-$ok = true;
+start_response();
+
 if (!have_permission(SET_UP_PERMISSION)) {
-  json_not_authorized();
-  $ok = false;
+  not_authorized_body();
 } else if ($_POST['purge'] == 'results') {
   record_event_purge(EVENT_PURGE_RESULTS);
   $sql = 'UPDATE RaceChart SET finishtime = NULL, finishplace = NULL, completed = NULL';
@@ -41,10 +41,8 @@ if (!have_permission(SET_UP_PERMISSION)) {
   $db->exec('DELETE FROM RaceChart');
   $db->exec('DELETE FROM Roster');
   $db->exec('DELETE FROM RegistrationInfo');
-  $db->exec('DELETE FROM Divisions');
   remove_fake_car_and_racer_images();
   if (read_raceinfo_boolean('fake-racers')) {
-    $db->exec('DELETE FROM ConstituentClasses');
     $db->exec('DELETE FROM Ranks');
     $db->exec('DELETE FROM Classes');
   }
@@ -53,12 +51,17 @@ if (!have_permission(SET_UP_PERMISSION)) {
   record_event_purge(EVENT_PURGE_AWARDS);
   $db->exec('DELETE FROM Awards');
 } else {
-  json_failure('not-recognized', "Unrecognized purge operation: ".$_POST['purge']);
-  $ok = false;
+  echo "<failure code='not-recognized'>Unrecognized purge operation: "
+      .htmlspecialchars($_POST['purge'], ENT_QUOTES, 'UTF-8')
+      ."</failure>";
 }
 
-if ($ok) {
-  json_success();
-  json_out('details', build_setup_page_details());
-}
+echo "<success/>\n";
+
+echo "<details><![CDATA[\n";
+echo json_encode(build_setup_page_details());
+echo "\n]]></details>\n";
+
+end_response();
+
 ?>

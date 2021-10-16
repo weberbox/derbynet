@@ -3,9 +3,6 @@ package org.jeffpiazza.derby;
 import java.io.IOException;
 import java.util.ArrayList;
 import org.jeffpiazza.derby.gui.TimerGui;
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
@@ -61,7 +58,7 @@ public class RoleFinder {
   public void findRoles() {
     ArrayList<String> roles = new ArrayList<String>();
     try {
-      JSONObject roles_result = session.doJsonQueryWithVariations("role.list");
+      Element roles_result = session.doQueryWithVariations("roles");
       if (roles_result == null) {
         client.roleFinderFailed(
             "No response, or response not understood (likely wrong URL)");
@@ -69,16 +66,24 @@ public class RoleFinder {
         synchronized (this) {
           serverAddress = session.getBaseUrl();
         }
-        JSONArray rolesj = roles_result.getJSONArray("roles");
-        if (rolesj.length() == 0) {
-          client.roleFinderFailed(
-              "Check the database; no roles provided in roles query");
+        NodeList roleNodes = roles_result.getElementsByTagName("role");
+        if (roleNodes.getLength() == 0) {
+          NodeList titles = roles_result.getElementsByTagName("title");
+          if (titles.getLength() == 1 && titles.item(0).getFirstChild().
+              getNodeValue().contains("Set-Up")) {
+            // Redirected to the set-up page, because there's no database
+            client.roleFinderFailed("Set up the server database before proceeding");
+          } else {
+            client.roleFinderFailed("No roles provided in roles query");
+          }
         } else {
-          for (int i = 0; i < rolesj.length(); ++i) {
-            JSONObject role = rolesj.getJSONObject(i);
-            if (role.optInt("timer-message", 0) != 0 ||
-                role.optInt("race-control", 0) != 0) {
-              roles.add(role.getString("name"));
+          for (int i = 0; i < roleNodes.getLength(); ++i) {
+            Element role = (Element) roleNodes.item(i);
+            if (!role.getAttribute("timer_message").isEmpty()) {
+              roles.add(role.getTextContent());
+            }
+            if (!role.getAttribute("race_control").isEmpty()) {
+              roles.add(role.getTextContent());
             }
           }
           if (roles.isEmpty()) {
@@ -86,9 +91,6 @@ public class RoleFinder {
           }
         }
       }
-    } catch (JSONException je) {
-      client.roleFinderFailed(je.getMessage());
-      LogWriter.stacktrace(je);
     } catch (ClientSession.HttpException he) {
       client.roleFinderFailed(he.getBriefMessage());
       LogWriter.info("RoleFinder failed: " + he.getMessage());

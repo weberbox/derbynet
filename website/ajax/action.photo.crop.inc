@@ -8,6 +8,8 @@
 
 require_once('inc/photo-config.inc');
 
+start_response();
+
 $image_name = $_POST['image_name'];
 
 $photo_repository = photo_repository(isset($_POST['repo']) ? $_POST['repo'] : 'head');
@@ -44,16 +46,13 @@ imagedestroy($im);
 
 $cropped->delete_dependents($image_name);
 
-if (take_action_silently('UPDATE RegistrationInfo'
-                         .' SET '.$photo_repository->column_name().' = :photo'
-                         .' WHERE '.$photo_repository->column_name().' = :original',
-                         array(':photo' => $target_file_path,
-                               ':original' => $original->file_path($image_name)))) {
-  json_success();
-} else {
-  json_sql_failure($sql);  // TODO Missing sql
-}
+take_action('UPDATE RegistrationInfo'
+            .' SET '.$photo_repository->column_name().' = :photo'
+            .' WHERE '.$photo_repository->column_name().' = :original',
+            array(':photo' => $target_file_path,
+                  ':original' => $original->file_path($image_name)));
+echo "<cache_breaker time='".time()."'/>\n";
 
-json_out('cache-breaker', time());
+end_response();
 
 ?>

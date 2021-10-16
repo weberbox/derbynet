@@ -14,7 +14,7 @@ require_once('inc/photo-config.inc');
 define('FAKE_RACER_IMAGES', 'fake-racer-images/racers');
 define('FAKE_CAR_IMAGES', 'fake-racer-images/cars');
 
-function fake_division_name($g) {
+function fake_group_name($g) {
   if ($g == 1) return 'Fake Lions';
   if ($g == 2) return 'Fake Tigers';
   if ($g == 3) return 'Fake Wolves';
@@ -22,6 +22,8 @@ function fake_division_name($g) {
   if ($g == 5) return 'Fake Webelos';
   return 'Fake Group '.$g;
 }
+
+start_response();
 
 if (have_permission(SET_UP_PERMISSION)) {
   $target_per_group = $_POST['racers_per_group'];
@@ -32,7 +34,9 @@ if (have_permission(SET_UP_PERMISSION)) {
   $swing = 2;
 
   for ($g = 1; $g <= $_POST['ngroups']; ++$g) {
-    $group_name = fake_division_name($g);
+    $group_name = fake_group_name($g);
+    $classid = find_or_create_class($group_name);
+    $rankid = find_or_create_rank($group_name, $classid);
     $group_size = $_POST['racers_per_group'] + mt_rand(-$swing, $swing);
     for ($r = 0; $r < $group_size; ++$r) {
       $index = mt_rand(0, count($fake_names) - 1);
@@ -40,7 +44,8 @@ if (have_permission(SET_UP_PERMISSION)) {
       insert_new_racer(array('firstname' => $racer['firstname'],
                              'lastname' => $racer['lastname'],
                              'carname' => '',
-                             'division' => $group_name));
+                             'classid' => $classid,
+                             'rankid' => $rankid));
 
       $racerid = read_single_value('SELECT racerid FROM RegistrationInfo'
                                    .' WHERE firstname = :firstname'
@@ -74,8 +79,10 @@ if (have_permission(SET_UP_PERMISSION)) {
   }
   write_raceinfo('fake-racers', 1);
 
-  json_success();
+  echo "<success/>\n";
 } else {
-  json_not_authorized();
+  not_authorized_body();
 }
+
+end_response();
 ?>

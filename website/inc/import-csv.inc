@@ -42,7 +42,6 @@ class ImportCsvGenerator {
   <div id="variations">
     &nbsp;
     <div id="encoding">
-    <?php $this->make_relabeling_section(); ?>
     </div>
 
     <div id="sheet">
@@ -50,9 +49,6 @@ class ImportCsvGenerator {
   </div>
 <?php
   }
-
-  // Override as needed
-  protected function make_relabeling_section() {}
 
   protected function make_import_button($button_label) {
 ?>
@@ -116,7 +112,7 @@ class ImportCsvGenerator {
 
     <?php $this->make_encoding_section(); ?>
     <div id="controls">
-        <?php $this->make_import_button($button_label); ?>
+      <?php $this->make_import_button($button_label); ?>
       <div class="hidden" id="assign_label_message">Assign field labels to enable file import.</div>
     </div><!-- controls -->
 

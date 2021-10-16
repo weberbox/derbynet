@@ -3,7 +3,6 @@ package org.jeffpiazza.derby;
 import java.io.IOException;
 import java.net.URL;
 import java.util.Random;
-import org.json.JSONObject;
 import org.w3c.dom.Element;
 
 // For exercising a timer device class, this takes the place of a ClientSession
@@ -21,8 +20,12 @@ public class SimulatedClientSession extends ClientSession {
   }
 
   @Override
-  public JSONObject login(String role, String password) throws IOException {
-    return new JSONObject("{\"outcome\": {\"summary\": \"successful\"}");
+  public Element login(String role, String password) throws IOException {
+    return parseResponse("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        + "<action-response action=\"login\" name=\"" + role + "\""
+        + " password=\"...\">\n"
+        + "<success>" + role + "</success>\n"
+        + "</action-response>");
   }
 
   @Override

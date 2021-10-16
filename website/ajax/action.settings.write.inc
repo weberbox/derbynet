@@ -5,6 +5,8 @@ require_once('inc/photo-config.inc');
 require_once('inc/schema_version.inc');
 require_once('inc/locked.inc');
 
+start_response();
+
 // To preclude problems with misspelled parameters, we want to be sure that we
 // account for every parameter passed.  We do that by just counting the number
 // of parameters that were recognized, and comparing to the number of parameters
@@ -20,12 +22,11 @@ if (have_permission(SET_UP_PERMISSION)) {
   // absence of a 'do-use-subgroups' parameter be used to control the
   // 'use-subgroups' setting.
   $failures = false;
-  $written = array();
 
   if (locked_settings()) {
     foreach(array('photo-dir', 'car-photo-dir', 'video-dir') as $post_key) {
       if (isset($_POST[$post_key])) {
-        json_failure('locked', "Directory settings are locked and cannot be changed.");
+        echo "<failure code='locked'>Directory settings are locked and cannot be changed.</failure>\n";
         $failures = true;
       }
     }
@@ -51,7 +52,7 @@ if (have_permission(SET_UP_PERMISSION)) {
       if (isset($_POST[$post_key.'-checkbox'])) {
         ++$num_picked;
         if (isset($_POST[$post_key])) ++$num_picked;
-        $written[] = $post_key;
+        echo "<wrote>".$post_key."</wrote>\n";
         write_raceinfo($raceinfo_key, @$_POST[$post_key] ? '1' : '0');
       }
     }
@@ -66,7 +67,7 @@ if (have_permission(SET_UP_PERMISSION)) {
        $_POST['unused-lane-mask'] != read_raceinfo('unused-lane-mask'))) {
     if (read_single_value('SELECT COUNT(*) FROM RaceChart'
                           .' WHERE COALESCE(completed, \'\') = \'\'') > 0) {
-      json_failure('already-scheduled', "Remove unraced schedules before changing lane counts.");
+      echo "<failure code='already-scheduled'>Remove unraced schedules before changing lane counts.</failure>";
       $failures = true;
     }
   }
@@ -78,8 +79,9 @@ if (have_permission(SET_UP_PERMISSION)) {
                   'n-rank-trophies' => 'n-rank-trophies',
                   'name-style' => 'name-style',
                   'xbs-award' => 'xbs-award',
-                  'division-label' => 'division-label',
+                  'group-label' => 'group-label',
                   'photos-on-now-racing' => 'photos-on-now-racing',
+                  'subgroup-label' => 'subgroup-label',
                   'supergroup-label' => 'supergroup-label',
                   'update-period' => 'update-period',
                   'photo-dir' => 'photo-directory',
@@ -100,32 +102,33 @@ if (have_permission(SET_UP_PERMISSION)) {
             as $post_key => $raceinfo_key) {
       if (isset($_POST[$post_key])) {
         ++$num_picked;
-        $written[] = $post_key;
+        echo "<wrote>".$post_key."</wrote>\n";
         write_raceinfo($raceinfo_key, $_POST[$post_key]);
         if (read_raceinfo($raceinfo_key) != $_POST[$post_key]) {
-          json_failure('not-written',
-                       "Value for $raceinfo_key could not be written."
-                       .(schema_version() != expected_schema_version()
-                         ? "<b>Upgrading the database schema may help.</b>" : ""));
+          echo "<failure code='not-written'>Value for ".$raceinfo_key." could not be written.";
+          if (schema_version() != expected_schema_version()) {
+            echo "<b>Upgrading the database schema may help.</b>";
+          }
+          echo "</failure>\n";
           $failures = true;
         }
       }
     }
   }
 
-  json_out('written', $written);
-
   if ($num_picked == count($_POST)) {
     // If $failures is set, then at least one of the settings had a problem, and
     // we shouldn't claim success
     if (!$failures) {
-      json_success();
+      echo "<success/>\n";
     }
   } else {
-    json_failure('unrecognized', (count($_POST) - $num_picked)." unrecognized setting(s)");
+    echo "<failure code='unrecognized'>".(count($_POST) - $num_picked)." unrecognized setting(s)</failure>\n";
   }
 } else {
-  json_not_authorized();
+  not_authorized_body();
 }
+
+end_response();
 
 ?>

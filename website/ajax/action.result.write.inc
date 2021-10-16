@@ -10,6 +10,8 @@ require_once('inc/autoadvance.inc');
 require_once('inc/racing-state.inc');
 require_once('inc/events.inc');
 
+start_response();
+
 if (have_permission(CONTROL_RACE_PERMISSION)) {
   // Capture events for all re-written results
   $current = get_running_round();
@@ -51,9 +53,11 @@ if (have_permission(CONTROL_RACE_PERMISSION)) {
       $current = get_running_round();
       advance_heat($current, 'next', /* show failure */ false);
     }
-    json_success();
+    echo '<success/>';
     require('ajax/query.poll.coordinator.inc');
   }
 } else {
-  json_not_authorized();
+  not_authorized_body();
 }
+
+end_response();

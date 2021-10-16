@@ -4,13 +4,13 @@
 
 require_once('inc/messages.inc');
 
+start_response();
+
 purge_stale_messages();
 
-$messages = array();
 foreach (retrieve_messages($_POST['recipient']) as $msg) {
-  $messages[] = json_decode($msg);
+  echo "<message>".htmlspecialchars($msg, ENT_QUOTES, 'UTF-8')."</message>\n";
 }
+echo "<success/>\n";
 
-json_out('messages', $messages);
-
-json_success();
+end_response();

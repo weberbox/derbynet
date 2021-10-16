@@ -1,8 +1,6 @@
 <?php @session_start();
 require_once('inc/data.inc');
 require_once('inc/authorize.inc');
-require_once('inc/divisions.inc');
-
 require_permission(SET_UP_PERMISSION);
 
 require_once('inc/import-csv.inc');

@@ -19,9 +19,10 @@ function MessagePoller(ms, recipient, on_message) {
             data: {action: 'message.retrieve',
                    recipient: recipient},
             success: function(data) {
-              var msgs = data.messages;
-              for (var i = 0; i < msgs.length; ++i) {
-                on_message(mesgs[i]);
+              // console.log("retrieve_messages took " + ((new Date()).getTime() - start) + "ms.");
+              let msgs = data.getElementsByTagName('message');
+              for (let i = 0; i < msgs.length; ++i) {
+                on_message(JSON.parse(msgs[i].textContent));
               }
             }
            });

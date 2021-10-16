@@ -26,13 +26,6 @@ function parse_photo_url($url_path_info) {
                  'render' => $exploded[3],
                  'basename' => urldecode($exploded[4]));
   } else if ($exploded[2] == 'racer') {
-    if (count($exploded) > 5) {
-      return array(
-        'repository' => $exploded[1],
-        'url_type' => $exploded[2], // 'racer'
-        'racerid' => $exploded[3],
-        'render' => $exploded[4]);
-    }
     return array('repository' => $exploded[1],
                  'url_type' => $exploded[2], // 'racer'
                  'racerid' => $exploded[3]);
@@ -54,7 +47,6 @@ if (!$parsed) {  // Malformed URL
   exit(1);
 }
 
-
 if ($parsed['url_type'] == 'info') {
   $file_path = read_raceinfo($parsed['key'], $parsed['default']);
 } else {
@@ -66,7 +58,12 @@ if ($parsed['url_type'] == 'info') {
     exit(1);
   }
 
-  if (isset($parsed['render'])) {
+  if ($parsed['url_type'] == 'racer') {
+    $file_path = read_single_value('SELECT '.$repo->column_name()
+                                   .' FROM RegistrationInfo'
+                                   .' WHERE racerid = :racerid',
+                                   array(':racerid' => $parsed['racerid']));
+  } else {
     $render = $repo->lookup($parsed['render']);
     if (!$render) {  // No such render
       http_response_code(404);
@@ -74,20 +71,6 @@ if ($parsed['url_type'] == 'info') {
       var_dump($parsed);
       exit(1);
     }
-  }
-
-  if ($parsed['url_type'] == 'racer') {
-    $file_path = read_single_value('SELECT '.$repo->column_name()
-                                   .' FROM RegistrationInfo'
-                                   .' WHERE racerid = :racerid',
-                                   array(':racerid' => $parsed['racerid']));
-    if (!$file_path) {
-      // Return a 1x1 transparent image if this racer doesn't have an image.
-      $file_path = 'img/1x1.png';
-    } else if (isset($render)) {
-      $file_path = $render->find_or_make_image_file(basename($file_path));
-    }
-  } else {
     $file_path = $render->find_or_make_image_file($parsed['basename']);
   }
 }

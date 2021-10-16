@@ -166,25 +166,28 @@ function car_number_for_racerid(racerid) {
 
 
 function get_ballot() {
+  console.log("get_ballot: " + $("#password_input").val());
   $.ajax('action.php',
          {type: 'GET',
           data: {query: 'ballot.get',
                  password: $("#password_input").val()},
           success: function(data) {
+            console.log(data);
+            var failures = data.getElementsByTagName("failure");
             var password_modal_showing =
                 $("#password_modal").closest('.modal_frame').length > 0 &&
                 !$("#password_modal").closest('.modal_frame').is(".hidden");
-            if (data.hasOwnProperty('failure')) {
+            if (failures.length == 0) {
+              g_ballot = JSON.parse(data.getElementsByTagName("ballot")[0].textContent);
+              close_modal("#password_modal");
+              set_up_ballot();
+            } else {
               $("#awards div[data-awardid]").addClass('hidden');
-              if (data.failure.code == 'password') {
+              if (failures[0].getAttribute('code') == 'password') {
                 if (!password_modal_showing) {
                   show_modal("#password_modal", function() { get_ballot(); return false; });
                 }
               }
-            } else {
-              g_ballot = data.ballot;
-              close_modal("#password_modal");
-              set_up_ballot();
             }
           }
          });
@@ -196,12 +199,14 @@ $(function() {
   setInterval(function() {
     $.ajax('action.php',
            {type: 'GET',
-            data: {query: 'settings.list',
+            data: {query: 'settings',
                    key: 'balloting'},
             success: function(data) {
-              var v = 'closed';
-              if (data.hasOwnProperty('settings') && data.settings.length > 0) {
-                v = data.settings[0].value;
+              var settings = data.getElementsByTagName('setting');
+              if (settings.length > 0) {
+                var v = settings[0].textContent;
+              } else {
+                var v = 'closed';
               }
               if (balloting_open_or_closed == '') {
                 balloting_open_or_closed = v;

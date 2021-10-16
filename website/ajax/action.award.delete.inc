@@ -1,20 +1,22 @@
 <?php   // awardid
-require_once('inc/json-awards.inc');
-require_once('inc/json-classes.inc');
+require_once('inc/awards-xml.inc');
 
 if (have_permission(EDIT_AWARDS_PERMISSION)) {
+  start_response();
   try {
     $stmt = $db->prepare('DELETE FROM Awards WHERE awardid = :awardid');
     if ($stmt->execute(array(':awardid' => $_POST['awardid']))) {
-      json_success();
-      json_out_awards(false);
+      echo "<success/>\n";
+      emit_award_list(/* include_ad_hoc */ false);
     } else {
-      json_failure('unknown', 'unknown');
+      echo "<failure/>\n";
     }
   } catch (Exception $e) {
-    json_failure('sql', $e->getMessage());
+    echo "<failure code='sql'>".htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8')."</failure>\n";
   }
+
+  end_response();
 } else {
-  json_not_authorized();
+  not_authorized();
 }
 ?>

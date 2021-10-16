@@ -63,7 +63,6 @@ function show_racer_awards_modal(judging_racer) {
     close_racer_awards_modal();
     $.ajax('action.php',
            {type: 'POST',
-            // action=award.adhoc
             data:  $("#racer_awards_form").serialize(),
             success: function(data) {
               update_awards(data);
@@ -112,30 +111,72 @@ function on_votes_click(event) {
 }
 
 
-function classid_to_class(classid, classes) {
+function awardtypeid_to_awardtype(awardtypeid, dataxml) {
+  var types = dataxml.getElementsByTagName('awardtype');
+  for (var i = 0; i < types.length; ++i) {
+    if (types[i].getAttribute("awardtypeid") == awardtypeid) {
+      return types[i].getAttribute("awardtype");
+    }
+  }
+  return "Can't resolve awardtypeid " + awardtypeid;
+}
+
+function classid_to_class(classid, dataxml) {
   if (classid == 0) return "";
-  for (var i = 0; i < classes.length; ++i) {
-    if (classes[i].classid == classid) {
-      return classes[i].name;
+  var types = dataxml.getElementsByTagName('class');
+  for (var i = 0; i < types.length; ++i) {
+    if (types[i].getAttribute("classid") == classid) {
+      return types[i].getAttribute("name");
     }
   }
   return "Can't resolve classid " + classid;
 }
 
-function rankid_to_rank(rankid, classes) {
+function rankid_to_rank(rankid, dataxml) {
   if (rankid == 0) return "";
-  for (var i = 0; i < classes.length; ++i) {
-    for (var j = 0; j < classes[i].ranks.length; ++j) {
-      if (classes[i].ranks[j].rankid == rankid) {
-        return classes[i].ranks[j].name;
-      }
+  var types = dataxml.getElementsByTagName('rank');
+  for (var i = 0; i < types.length; ++i) {
+    if (types[i].getAttribute("rankid") == rankid) {
+      return types[i].getAttribute("name");
     }
   }
   return "Can't resolve rankid " + rankid;
 }
 
-function update_awards(data) {
-  var awards = data.awards;
+function parse_award_list(dataxml) {
+  return $.map(
+    dataxml.getElementsByTagName('award'),
+    function (award) {
+      return {awardid: award.getAttribute('awardid'),
+              awardname: award.getAttribute('awardname'),
+              awardtypeid: award.getAttribute('awardtypeid'),
+              adhoc: award.getAttribute('adhoc'),
+              classid: award.getAttribute('classid'),
+              rankid: award.getAttribute('rankid'),
+              eligible_classids: award.getAttribute('eligible-classids'),
+              eligible_rankids: award.getAttribute('eligible-rankids'),
+              racerid: award.getAttribute('racerid'),
+              firstname: award.getAttribute('firstname'),
+              lastname: award.getAttribute('lastname'),
+              carnumber: award.getAttribute('carnumber'),
+              sort: award.getAttribute('sort'),
+              ballot_depth: award.getAttribute('ballot_depth'),
+              votes: $.map(
+                award.getElementsByTagName('vote'),
+                function(vote) {
+                  return {racerid: vote.getAttribute('racerid'),
+                          score: vote.getAttribute('score'),
+                          carnumber: vote.getAttribute('carnumber'),
+                          firstname: vote.getAttribute('firstname'),
+                          lastname: vote.getAttribute('lastname')
+                         };
+                })
+             };
+    });
+}
+
+function update_awards(dataxml) {
+  var awards = parse_award_list(dataxml);
 
   $(".award_marker, .adhoc_marker").addClass('hidden');  // Hide all the award markers, unhide as needed below
   $(".judging_racer").removeAttr('data-adhoc')
@@ -143,18 +184,18 @@ function update_awards(data) {
 
   var adhoc_count = 0;
   for (var i = 0; i < awards.length; ++i) {
-    if (awards[i].adhoc) {
+    if (awards[i]['adhoc'] != 0) {
       var racerid = awards[i]["racerid"];
       $(".judging_racer[data-racerid='" + racerid + "']")
-        .attr('data-adhoc', awards[i].awardname);
+        .attr('data-adhoc', awards[i]['awardname']);
       $(".judging_racer[data-racerid='" + racerid + "'] .adhoc_marker").removeClass('hidden');
       ++adhoc_count;
     }
   }
 
-  var speed_awards = data["speed-awards"];
+  var speed_awards = dataxml.getElementsByTagName('speed-award');
   for (var i = 0; i < speed_awards.length; ++i) {
-    var racerid = speed_awards[i].racerid;
+    var racerid = speed_awards[i]['racerid'];
     $(".judging_racer[data-racerid='" + racerid + "']")
       .css("background-image", "url('img/laurel.png')");
   }
@@ -185,37 +226,36 @@ function update_awards(data) {
     if (i >= awards.length - adhoc_count) {
       $(this).remove();
     } else {
-      if (!awards[i].adhoc) {
-        $(this).attr("data-awardid", awards[i].awardid);
-        if ($(this).attr("data-awardname") != awards[i].awardname) {
-          $(this).find('p.awardname').text(awards[i].awardname);
-          $(this).attr("data-awardname", awards[i].awardname);
+      if (awards[i]['adhoc'] == 0) {
+        $(this).attr("data-awardid", awards[i]['awardid']);
+        if ($(this).attr("data-awardname") != awards[i]['awardname']) {
+          $(this).find('p.awardname').text(awards[i]['awardname']);
+          $(this).attr("data-awardname", awards[i]['awardname']);
         }
-        if ($(this).attr("data-awardtypeid") != awards[i].awardtypeid) {
-          $(this).attr("data-awardtypeid", awards[i].awardtypeid);
-          $(this).find('.awardtype').text(awards[i].awardtype);
+        if ($(this).attr("data-awardtypeid") != awards[i]['awardtypeid']) {
+          $(this).attr("data-awardtypeid", awards[i]['awardtypeid']);
+          $(this).find('.awardtype').text(
+            awardtypeid_to_awardtype(awards[i]['awardtypeid'], dataxml));
         }
 
-        if ($(this).attr("data-classid") != awards[i].classid) {
-          $(this).attr("data-classid", awards[i].classid);
-          var classname = classid_to_class(awards[i].classid, data.classes);
+        if ($(this).attr("data-classid") != awards[i]['classid']) {
+          $(this).attr("data-classid", awards[i]['classid']);
+          var classname = classid_to_class(awards[i]['classid'], dataxml);
           $(this).attr("data-class", classname);
           $(this).find('.classname').text(classname);
         }
 
-        var eligible_classids = awards[i]['eligible-classids'].join(',');
-        if ($(this).attr("data-eligible-classids") != eligible_classids) {
-          $(this).attr("data-eligible-classids", eligible_classids);
+        if ($(this).attr("data-eligible-classids") != awards[i]['eligible_classids']) {
+          $(this).attr("data-eligible-classids", awards[i]['eligible_classids']);
         }
-        var eligible_rankids = awards[i]['eligible-rankids'].join(',');
-        if ($(this).attr("data-eligible-rankids") != eligible_rankids) {
-          $(this).attr("data-eligible-rankids", eligible_rankids);
+        if ($(this).attr("data-eligible-rankids") != awards[i]['eligible_rankids']) {
+          $(this).attr("data-eligible-rankids", awards[i]['eligible_rankids']);
         }
 
-        if ($(this).attr("data-rankid") != awards[i].rankid) {
-          var rankid = awards[i].rankid;
+        if ($(this).attr("data-rankid") != awards[i]['rankid']) {
+          var rankid = awards[i]['rankid'];
           $(this).attr("data-rankid", rankid);
-          var rankname = rankid_to_rank(rankid, data.classes);
+          var rankname = rankid_to_rank(rankid, dataxml);
           $(this).attr("data-rank", rankname);
           if (rankid != 0) {
             $(this).find('.rankname').text(rankname + ', ');
@@ -223,11 +263,11 @@ function update_awards(data) {
         }
 
         $(this).find('.votes')
-          .data('votes', awards[i].votes.join(','))
-          .attr('data-awardid', awards[i].awardid)
-          .toggleClass('hidden', awards[i].votes.length == 0);
+          .data('votes', awards[i]['votes'])
+          .attr('data-awardid', awards[i]['awardid'])
+          .toggleClass('hidden', awards[i]['votes'].length == 0);
         
-        var racerid = awards[i].racerid;
+        var racerid = awards[i]['racerid'];
         if (racerid != '' && racerid != '0') {
           $(".judging_racer[data-racerid='" + racerid + "'] .award_marker").removeClass('hidden');
         }
@@ -235,7 +275,7 @@ function update_awards(data) {
           $(this).attr("data-racerid", racerid);
           $(this).find('.recipient')
             .empty()
-            .text(awards[i].firstname + " " + awards[i].lastname);
+            .text(awards[i]['firstname'] + " " + awards[i]['lastname']);
           if (racerid != 0) {
             $(this).find('.recipient')
               .prepend('<img src="img/cancel-12.png" onclick="handle_remove_recipient($(this));"/>');
@@ -271,14 +311,14 @@ function on_ballot_depth_change(event) {
 function update_ballot_awards(awards) {
   $("#ballot_modal_awards").empty();
   for (var i = 0; i < awards.length; ++i) {
-    var id = 'ballot_' + awards[i].awardid;
+    var id = 'ballot_' + awards[i]['awardid'];
     $("#ballot_modal_awards").append(
       $("<div>")
-        .append($("<h3/>").text(awards[i].awardname))
+        .append($("<h3/>").text(awards[i]['awardname']))
         .append($("<label/>").attr('for', id).text("Votes allowed per ballot:"))
         .append($("<select/>")
                 .attr('id', id)
-                .attr('data-awardid', awards[i].awardid)
+                .attr('data-awardid', awards[i]['awardid'])
                 .append("<option value='0'>Not on ballot</option>")
                 .append("<option>1</option>")
                 .append("<option>2</option>")

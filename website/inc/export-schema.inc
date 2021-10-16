@@ -15,7 +15,6 @@ require_once('inc/schema_version.inc');
    Ranks(classid) -> Classes
 
    RegistrationInfo(classid) -> Classes
-   RegistrationInfo(divisionid) -> Divisions
    RegistrationInfo(rankid) -> Ranks
 
    Roster(roundid) -> Rounds
@@ -79,13 +78,6 @@ if (schema_version() >= 6) {
   $schema['BallotAwards'] = array('ballotid', 'awardid', 'depth');
   $schema['Voters'] = array('voterid', 'ballotid', 'when_cast', 'ip_addr', 'identifier');
   $schema['Votes'] = array('voteid', 'awardid', 'racerid', 'voterid');
-}
-
-if (schema_version() >= 8) {
-  $schema['Divisions'] = array('divisionid', 'name', 'sortorder');
-  $schema['ConstituentClasses'] = array('antecedent', 'dependent');
-  
-  $schema['RegistrationInfo'][] = 'divisionid';
 }
 
 ?>

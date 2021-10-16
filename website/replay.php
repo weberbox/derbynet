@@ -66,12 +66,13 @@ function logmessage(txt) {
 function poll_as_replay() {
   $.ajax("action.php",
   {type: 'POST',
-    data: {action: 'replay.message',
+    data: {action: 'replay-message',
            status: 0,
            'finished-replay': 0},
     success: function(data) {
-      for (let i = 0; i < data.replay.length; ++i) {
-        handle_replay_message(data.replay[i]);
+      let msgs = data.getElementsByTagName('replay-message');
+      for (let i = 0; i < msgs.length; ++i) {
+        handle_replay_message(msgs[i].textContent);
       }
     }
   });

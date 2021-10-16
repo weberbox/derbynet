@@ -2,10 +2,12 @@
 
 // $_POST['state'] = 'open' or 'closed'
 
+start_response();
 if (!have_permission(JUDGING_PERMISSION)) {
-  json_not_authorized();
+  not_authorized_body();
 } else {
   write_raceinfo('balloting', $_POST['state']);
-  json_success();
+  echo "\n<success/>\n";
 }
+end_response();
 ?>

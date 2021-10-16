@@ -1,74 +1,13 @@
 package org.jeffpiazza.derby.timer;
 
-// A Profile describes a particular model timer.
-//
-// {name:
-//  params: {baud, data, stop, parity}
-//  options: {max_lanes, eol, max_running_times_ms, display_hold_time_ms}
-//  prober: {pre_probe, probe, responses}
-//  setup: {commands: [c1, c2, ...]},
-//  setup_queries: [{command, matchers: [...]}, ...]
-//  matchers: [{pattern, internal, event, args}, ...]
-//  gate_watcher: {command, matchers[...]}
-//  heat_prep: {unmask, mask, lane, reset}
-//  on: { <event>: {commands: [c1, c2, ...]}, ... }
-//  poll: { <state>: , {commands: [c1, c2, ...]}, ... }
-//  remote_start: {has_remote_start, commands: [c1, c2, ...]}
-// }
-//
-//  options.max_lanes gives the maximum number of lanes for this kind of timer;
-//   it's used to interpret lane masks if the actual number of lanes is not
-//   known.
-//  options.eol is an end-of-line character to be appended to each command
-//  options.max_running_times_ms sets an upper bound on how long a heat can run
-//   before results are overdue
-//  options.diplay_hold_until_ms tells how long after a heat ends can the timer
-//   be reset (to allow timer display to be seen).
-//
-//  A matcher includes a regex pattern and an event to generate.  Args tells
-//   the matched group(s) that should be passed as arguments with the event.
-//   internal, if present, is another list of matchers that should be repeatedly
-//   applied to the string that matched the outer matcher's pattern.
-//
-//  prober gives a command (probe) and response regexes to identify the timer,
-//   if such identification is possible.  pre_probe, if present, is a command to
-//   reset or settle the timer before probing.
-//
-//  setup is a sequence of commands to set up the timer once it's been identified.
-//  setup_queries is a collection of commands and matchers to interrogate the
-//   timer for details (like number of lanes), if such interrogation is possible.
-//
-//  A gate_watcher is present if the starting gate state can be determined by
-//   polling; the command string gets sent to the timer and the matchers are
-//   applied to any responses.
-//
-//  heat_prep describes how to prepare the timer for the next heat.  If the
-//   timer supports lane masking, then the fields unmask, mask,
-//   and lane describe how to construct the commands to set the lane mask.
-//   reset is the command string to reset the timer, if the timer can be reset
-//   from the host.
-//
-//  on and poll describe additional commands to be sent when a given event occurs
-//   (on) or whenever the timer is in a given state (poll).
-//
-//  remote_start, if present, indicates that the timer may support a remote
-//   start gate release.  The has_remote_start property, if present, indicates
-//   whether this specific timer supports remote start.  The commands property
-//   gives the actual command sequence to open the start gate.
-
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.TreeMap;
-import org.json.JSONArray;
-import org.json.JSONObject;
 
 public class Profile {
   public String name;
 
-  private Profile(String name) {
+  public Profile(String name) {
     this.name = name;
   }
 
@@ -76,72 +15,55 @@ public class Profile {
     return new Profile(name);
   }
 
-  public static class Options {
-    public int max_lanes = 0;
-    // Maximum allowed time after race start after which results become overdue.
-    // 0 = wait forever
-    public long max_running_time_ms = 11000;
-    // Some timers require a particular end-of-line character or sequence
-    public String eol = "";
-    // Defer reset and lane masking after a heat finishes to this many ms.
-    // after a heat
-    public long display_hold_time_ms = 10000;
-
-    public JSONObject toJSON() {
-      return new JSONObject()
-          .put("eol", eol)
-          .put("max_lanes", max_lanes)
-          .put("max_running_time_ms", max_running_time_ms)
-          .put("display_hold_time_ms", display_hold_time_ms);
-    }
-  }
-  public Options options = new Options();
+  public String end_of_line = "";
 
   public Profile end_of_line(String eol) {
-    options.eol = eol;
+    this.end_of_line = eol;
     return this;
   }
+
+  public int max_lanes = 0;
 
   public Profile max_lanes(int max_lanes) {
-    options.max_lanes = max_lanes;
+    this.max_lanes = max_lanes;
     return this;
   }
+
+  // Maximum allowed time after race start after which results become overdue.
+  // 0 = wait forever
+  public long max_running_time_ms = 11000;
 
   public Profile max_running_time_ms(long max_running_time_ms) {
-    options.max_running_time_ms = max_running_time_ms;
+    this.max_running_time_ms = max_running_time_ms;
     return this;
   }
 
+  // Defer reset and lane masking after a heat finishes to this many ms.
+  // after a heat
+  public long display_hold_time_ms = 10000;
+
   public Profile display_hold_time_ms(long display_hold_time_ms) {
-    options.display_hold_time_ms = display_hold_time_ms;
+    this.display_hold_time_ms = display_hold_time_ms;
     return this;
   }
 
   public static class PortParams {
-    public int baud;
-    public int data;
-    public int stop;
+    public int baudRate;
+    public int dataBits;
+    public int stopBits;
     public int parity;
 
     public PortParams(int baudRate, int dataBits, int stopBits, int parity) {
-      this.baud = baudRate;
-      this.data = dataBits;
-      this.stop = stopBits;
+      this.baudRate = baudRate;
+      this.dataBits = dataBits;
+      this.stopBits = stopBits;
       this.parity = parity;
     }
-
-    public JSONObject toJSON() {
-      return new JSONObject()
-          .put("baud", baud)
-          .put("data", data)
-          .put("stop", stop)
-          .put("parity", parity);
-    }
   }
-  public PortParams params;
+  public PortParams portParams;
 
   public Profile params(int baudRate, int dataBits, int stopBits, int parity) {
-    params = new PortParams(baudRate, dataBits, stopBits, parity);
+    portParams = new PortParams(baudRate, dataBits, stopBits, parity);
     return this;
   }
 
@@ -152,12 +74,6 @@ public class Profile {
     public RemoteStart(boolean has_remote_start, String command) {
       this.has_remote_start = has_remote_start;
       this.command = command;
-    }
-
-    public JSONObject toJSON() {
-      return new JSONObject()
-          .put("has_remote_start", has_remote_start)
-          .put("command", command);
     }
   }
 
@@ -178,37 +94,22 @@ public class Profile {
     public CommandSequence(String... commands) {
       this.commands = commands;
     }
-
-    public JSONObject toJSON() {
-      return new JSONObject()
-          .put("commands", new JSONArray(commands));
-    }
   }
 
   public static class Prober {
     public CommandSequence pre_probe;
     public String probe;
-    public String[] responses;
+    public String[] response_patterns;
 
     public Prober(CommandSequence pre_probe, String probe,
                   String[] response_patterns) {
       this.pre_probe = pre_probe;
       this.probe = probe;
-      this.responses = response_patterns;
+      this.response_patterns = response_patterns;
     }
 
     public Prober(String probe, String... response_patterns) {
       this(null, probe, response_patterns);
-    }
-
-    public JSONObject toJSON() {
-      JSONObject j = new JSONObject()
-          .put("probe", probe)
-          .put("responses", new JSONArray(responses));
-      if (pre_probe != null) {
-        j.put("pre_probe", pre_probe.toJSON());
-      }
-      return j;
     }
   }
 
@@ -244,18 +145,18 @@ public class Profile {
   }
 
   public static class Detector {
-    public String pattern;
+    public String pattern_string;
     public Detector[] internal_detectors;
     public Event event;
-    public int[] args;
+    public int[] arg_indexes;
 
     public Detector(String pattern_string,
                     Detector[] internal_detectors,
                     Event event, int... arg_indexes) {
       this.event = event;
       this.internal_detectors = internal_detectors;
-      this.pattern = pattern_string;
-      this.args = arg_indexes;
+      this.pattern_string = pattern_string;
+      this.arg_indexes = arg_indexes;
     }
 
     public Detector(String pattern_string, Event event, int... arg_indexes) {
@@ -265,24 +166,12 @@ public class Profile {
     public Detector(String pattern_string, Event event) {
       this(pattern_string, event, null);
     }
-
-    public JSONObject toJSON() {
-      return new JSONObject()
-          .put("pattern", pattern)
-          .putOpt("internal", internal_detectors == null ? null
-                              : detectorsToJSON(Arrays.
-                      asList(internal_detectors)))
-          .putOpt("event", event == null ? null : event.toString())
-          .putOpt("args",
-                  args == null || args.length == 0 ? null
-                  : new JSONArray(args));
-    }
   }
-  public ArrayList<Detector> matchers = new ArrayList<Detector>();
+  public ArrayList<Detector> detectors = new ArrayList<Detector>();
 
   public Profile match(String pattern_string, Detector[] internal_detectors,
                        Event event, int... arg_indexes) {
-    matchers.add(new Detector(pattern_string, internal_detectors, event,
+    detectors.add(new Detector(pattern_string, internal_detectors, event,
                                arg_indexes));
     return this;
   }
@@ -302,17 +191,11 @@ public class Profile {
 
   public static class Query {
     public String command;
-    public Detector[] matchers;
+    public Detector[] detectors;
 
-    public Query(String command, Detector... matchers) {
+    public Query(String command, Detector... detectors) {
       this.command = command;
-      this.matchers = matchers;
-    }
-
-    public JSONObject toJSON() {
-      return new JSONObject()
-          .put("command", command)
-          .put("matchers", detectorsToJSON(Arrays.asList(matchers)));
+      this.detectors = detectors;
     }
   }
 
@@ -327,25 +210,17 @@ public class Profile {
   }
 
   public static class HeatPreparation {
-    public String unmask;
-    public String mask;
-    public char lane;
-    public String reset;
+    public String unmask_command;
+    public String mask_command;
+    public char first_lane;
+    public String reset_command;
 
     public HeatPreparation(String unmask_command, String mask_command,
                            char first_lane, String reset_command) {
-      this.unmask = unmask_command;
-      this.mask = mask_command;
-      this.lane = first_lane;
-      this.reset = reset_command;
-    }
-
-    public JSONObject toJSON() {
-      return new JSONObject()
-          .putOpt("unmask", unmask)
-          .putOpt("mask", mask)
-          .putOpt("lane", mask == null ? null : lane)
-          .putOpt("reset", reset);
+      this.unmask_command = unmask_command;
+      this.mask_command = mask_command;
+      this.first_lane = first_lane;
+      this.reset_command = reset_command;
     }
   }
   public HeatPreparation heat_prep;
@@ -363,14 +238,14 @@ public class Profile {
   }
 
   public Profile heat_prep(String reset_command) {
-    return heat_prep(null, null, (char) 0, reset_command);
+    return heat_prep(null, null, (char)0, reset_command);
   }
 
-  public Map<Event, CommandSequence> on
+  public Map<Event, CommandSequence> custom_handlers
       = new TreeMap<Event, CommandSequence>();
 
   public Profile on(Event event, CommandSequence cmd) {
-    on.put(event, cmd);
+    custom_handlers.put(event, cmd);
     return this;
   }
 
@@ -378,67 +253,15 @@ public class Profile {
     return on(event, new CommandSequence(cmd));
   }
 
-  public Map<StateMachine.State, CommandSequence> poll
+  public Map<StateMachine.State, CommandSequence> custom_poll_actions
       = new TreeMap<StateMachine.State, CommandSequence>();
 
   public Profile during(StateMachine.State state, CommandSequence commands) {
-    poll.put(state, commands);
+    custom_poll_actions.put(state, commands);
     return this;
   }
 
   public Profile during(StateMachine.State state, String... cmd) {
     return during(state, new CommandSequence(cmd));
-  }
-
-  protected static JSONArray queriesToJSON(List<Query> queries) {
-    JSONArray array = new JSONArray();
-    for (Query q : queries) {
-      array.put(q.toJSON());
-    }
-    return array;
-  }
-
-  protected static JSONArray detectorsToJSON(List<Detector> detectors) {
-    JSONArray array = new JSONArray();
-    for (Detector d : detectors) {
-      array.put(d.toJSON());
-    }
-    return array;
-  }
-
-  protected static JSONObject handlersToJSON(
-      Map<Event, CommandSequence> handlers) {
-    JSONObject obj = new JSONObject();
-    for (Entry<Event, CommandSequence> entry : handlers.entrySet()) {
-      obj.put(entry.getKey().toString(), entry.getValue().toJSON());
-    }
-    return obj;
-  }
-
-  protected static JSONObject pollersToJSON(
-      Map<StateMachine.State, CommandSequence> pollers) {
-    JSONObject obj = new JSONObject();
-    for (Entry<StateMachine.State, CommandSequence> entry : pollers.entrySet()) {
-      obj.put(entry.getKey().toString(), entry.getValue().toJSON());
-    }
-    return obj;
-  }
-
-  public JSONObject toJSON() {
-    return new JSONObject()
-        .put("name", name)
-        .put("options", options.toJSON())
-        .put("params", params.toJSON())
-        .putOpt("remote_start", remote_start == null ? null
-                                : remote_start.toJSON())
-        .putOpt("prober", prober == null ? null : prober.toJSON())
-        .putOpt("setup", setup == null ? null : setup.toJSON())
-        .putOpt("setup_queries", setup_queries.size() == 0 ? null
-                                 : queriesToJSON(setup_queries))
-        .put("matchers", detectorsToJSON(matchers))
-        .put("gate_watcher", gate_watcher == null ? null : gate_watcher.toJSON())
-        .put("heat_prep", heat_prep == null ? null : heat_prep.toJSON())
-        .putOpt("on", on.size() == 0 ? null : handlersToJSON(on))
-        .putOpt("poll", poll.size() == 0 ? null : pollersToJSON(poll));
   }
 }

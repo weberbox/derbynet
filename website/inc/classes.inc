@@ -66,10 +66,8 @@ function classes_and_ranks() {
   $rankseq = array();
   foreach ($db->query('SELECT Classes.classid, class, rankid, rank,'
                       .(schema_version() >= 3
-                        ? 'constituents, ntrophies, '
-                        : '\'\' AS constituents, -1 AS ntrophies, ')
-                      .(schema_version() >= RANK_AGGREGATE_SCHEMA
-                        ? 'rankids' : '\'\' AS rankids')
+                        ? 'constituents, ntrophies'
+                        : '\'\' AS constituents, -1 AS ntrophies')
                       .' FROM Classes'
                       .' LEFT JOIN Ranks ON Classes.classid = Ranks.classid'
                       .' ORDER BY '.(schema_version() >= 2
@@ -81,8 +79,6 @@ function classes_and_ranks() {
       $classes[$row['classid']] = array('class' => $row['class'],
                                         'constituents' => array_filter(explode(',', $row['constituents']),
                                                                        'strlen'),
-                                        'constituent-ranks' => array_filter(explode(',', $row['rankids']),
-                                                                            'strlen'),
                                         'ntrophies' => $row['ntrophies'],
                                         'seq' => count($classseq));
     }

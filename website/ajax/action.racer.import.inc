@@ -16,6 +16,8 @@ function as_boolean($val) {
   return $val != 'n';
 }
 
+start_response();
+
 if (have_permission(SET_UP_PERMISSION)) {
 
   // $fields tells what parameters we expect, and whether each is required.
@@ -23,9 +25,10 @@ if (have_permission(SET_UP_PERMISSION)) {
   // them.
   $fields = array('lastname' => true,  
                   'firstname' => true,
-                  'division' => false,
+                  'classname' => false,
                   'carnumber' => false,
                   'carname' => false,
+                  'subgroup' => false,
                   'exclude' => false);
 
   // An alternative to separate lastname and firstname parameters is a single
@@ -59,18 +62,37 @@ if (have_permission(SET_UP_PERMISSION)) {
 
   foreach ($fields as $fieldname => $required) {
     if ($required && !isset($_POST[$fieldname])) {
-      json_failure('missingrequired', "Missing required field $fieldname.");
+      echo '<failure code="missingrequired">Missing required field '.$fieldname.'</failure>';
       $ok = false;
       break;
     }
   }
 } else {
-  json_not_authorized();
+  not_authorized_body();
   $ok = false;
 }
 
 if ($ok) {
-  $division = isset($_POST['division']) ? trim(@$_POST['division']) : 'Default';
+  $classname = isset($_POST['classname']) ? trim(@$_POST['classname']) : '';
+  if (!$classname) {
+    $classname = UNSPECIFIED_CLASS;
+  }
+  $classname = substr($classname, 0, CLASS_COLUMN_WIDTH);
+  $classid = find_or_create_class($classname);
+  if (!empty(read_single_value('SELECT constituents FROM Classes WHERE classid = :classid',
+                               array(':classid' => $classid)))) {
+    echo '<failure code="aggregate">Aggregate classes cannot contain direct members</failure>';
+    $ok = false;
+  }
+}
+if ($ok) {
+  $rankname = isset($_POST['subgroup']) ? trim($_POST['subgroup']) : $classname;
+  if (!$rankname) {
+    $rankname = UNSPECIFIED_RANK;
+  }
+  $rankname = substr($rankname, 0, RANK_COLUMN_WIDTH);
+  $rankid = find_or_create_rank($rankname, $classid);
+
   $carnumber = isset($_POST['carnumber']) ? $_POST['carnumber'] : '';
   $carname = isset($_POST['carname']) ? $_POST['carname'] : '';
 
@@ -80,9 +102,12 @@ if ($ok) {
                          'lastname' => $_POST['lastname'],
                          'carnumber' => $carnumber,
                          'carname' => $carname,
-                         'division' => $division,
+                         'rankid' => $rankid,
+                         'classid' => $classid,
                          'exclude' => $exclude));
 
-  json_success();
+  echo '<success/>';
 }
+
+end_response();
 ?>

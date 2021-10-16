@@ -11,5 +11,5 @@ try {
 } catch (PDOException $p) {
 }
 
-json_success();
+echo "<success/>\n";
 ?>

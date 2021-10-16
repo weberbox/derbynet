@@ -9,8 +9,10 @@ require_once('inc/timer-state.inc');
 require_once('inc/last-heat.inc');
 require_once('inc/scenes.inc');
 
+start_response();
+
 if (!have_permission(CONTROL_RACE_PERMISSION)) {
-  json_not_authorized();
+  not_authorized_body();
 } else {
   $ok = true;
 
@@ -65,13 +67,15 @@ if (!have_permission(CONTROL_RACE_PERMISSION)) {
       }
     }
   } else {
-    json_failure('nosuchheat', 'No such heat');
+    echo "<failure code='nosuchheat'>No such heat</failure>\n";
   }
 
   if ($ok) {
-    json_success();
+    echo "<success/>\n";
   }
 }
 
 require('ajax/query.poll.coordinator.inc');
+
+end_response();
 ?>

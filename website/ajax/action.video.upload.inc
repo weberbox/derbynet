@@ -9,6 +9,8 @@
 //
 // $_POST['roundid']
 
+start_response();
+
 // TODO Protect against unauthorized uploads
 if (false && !have_permission(PHOTO_UPLOAD_PERMISSION)) {
   not_authorized_body();
@@ -37,10 +39,10 @@ if (false && !have_permission(PHOTO_UPLOAD_PERMISSION)) {
       // may help. Introduced in PHP 5.2.0.
     }
 
-    json_failure('upload_'.$video['error'], $msg);
+    echo '<failure code="upload_'.$video['error'].'">'.$msg.'</failure>'."\n";
     // } else if ($video['type'] != ...) {
   } else if ($video_dir === false) {
-    json_failure('not-configured', "No video upload directory configured.");
+    echo '<failure code="not-configured">No video upload directory configured.</failure>'."\n";
   } else {
     $video_name = basename($video['name']);
 
@@ -62,17 +64,19 @@ if (false && !have_permission(PHOTO_UPLOAD_PERMISSION)) {
     }
 
     if (move_uploaded_file($video['tmp_name'], $video_dir.DIRECTORY_SEPARATOR.$video_name)) {
-      json_success();
+      echo "<success/>\n";
     } else {
-      $msg = "move_uploaded_file failed.";
+      echo "<failure code='move_uploaded'>move_uploaded_file failed.";
       if (!is_readable($video_dir)) {
-        $msg .= '  <b>Check settings: video directory is not readable.</b>';
+        echo '  <b>Check settings: video directory is not readable.</b>';
       }
       if (!is_writable($video_dir)) {
-        $msg .= '  <b>Check settings: video directory is not writable.</b>';
+        echo '  <b>Check settings: video directory is not writable.</b>';
       }
-      json_failure('move_uploaded', $msg);
+      echo '</failure>'."\n";
     }
   }
 }
+
+end_response();
 ?>

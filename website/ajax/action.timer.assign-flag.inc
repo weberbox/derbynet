@@ -11,6 +11,6 @@ read_single_value('UPDATE TimerSettings SET pending = :value'
 } catch (PDOException $p) {
 }
 
-json_success();
+echo "<success/>\n";
 
 ?>

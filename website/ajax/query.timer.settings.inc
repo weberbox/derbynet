@@ -1,27 +1,17 @@
+<timer-settings>
 <?php
 
-$devices = array();
-$flags = array();
 try {
   $stmt = $db->prepare('SELECT kind, key, type, value, description FROM TimerSettings');
   $stmt->execute(array());
   foreach ($stmt as $row) {
-    if ($row['kind'] == 'flag') {
-      $flags[] = array('name' => $row['key'],
-                       'type' => $row['type'],
-                       'value' => $row['value'],
-                       'description' => $row['description']);
-    } else if ($row['kind'] == 'device') {
-      $devices[] = array('name' => $row['key'],
-                         'description' => $row['description']);
-    } else if ($row['kind'] == 'ports') {  // comma-separated list
-      json_out('ports', $row['value']);
-    }
+    echo "  <$row[kind] name=\"".htmlspecialchars($row['key'], ENT_QUOTES, 'UTF-8')."\"";
+    echo " type=\"$row[type]\" value=\"".htmlspecialchars($row['value'], ENT_QUOTES, 'UTF-8')."\"";
+    echo ">";
+    echo htmlspecialchars($row['description'], ENT_QUOTES, 'UTF-8');
+    echo "</$row[kind]>\n";
   }
 } catch (PDOException $p) {
 }
-
-json_out('devices', $devices);
-json_out('flags', $flags);
-
 ?>
+</timer-settings>

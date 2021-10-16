@@ -6,7 +6,6 @@ require_once('inc/authorize.inc');
 require_once('inc/schema_version.inc');
 require_once('inc/photo-config.inc');
 require_once('inc/classes.inc');
-require_once('inc/divisions.inc');
 require_once('inc/checkin-table.inc');
 
 require_permission(CHECK_IN_RACERS_PERMISSION);
@@ -29,8 +28,6 @@ require_permission(CHECK_IN_RACERS_PERMISSION);
 $use_groups = use_groups();
 $use_subgroups = use_subgroups();
 
-$use_groups = $use_subgroups = false;
-
 // Our pack provides an "exclusively by scout" award, based on a
 // signed statement from the parent.  Collecting the statement is part
 // of the check-in process, so there's provision for a checkbox on the
@@ -42,7 +39,7 @@ $xbs_award_name = read_raceinfo('xbs-award', 'Exclusively By Scout');
 
 $order = '';
 if (isset($_GET['order']))
-  $order = $_GET['order'];  // Values are: name, class, car, division
+  $order = $_GET['order'];  // Values are: name, class, car
 if (!$order)
     $order = 'name';
 
@@ -67,7 +64,6 @@ function column_header($text, $o) {
 <link rel="stylesheet" type="text/css" href="css/main-table.css"/>
 <link rel="stylesheet" type="text/css" href="css/checkin.css"/>
 <script type="text/javascript" src="js/jquery.js"></script>
-<script type="text/javascript" src="js/jquery-ui.min.js"></script>
 <script type="text/javascript" src="js/ajax-setup.js"></script>
 <script type="text/javascript">
 var g_order = '<?php echo $order; ?>';
@@ -80,7 +76,6 @@ var g_action_on_barcode = "<?php
 <script type="text/javascript" src="js/modal.js"></script>
 <script type="text/javascript" src="js/webcam.js"></script>
 <script type="text/javascript" src="js/dropzone.min.js"></script>
-<script type="text/javascript" src="js/divisions-modal.js"></script>
 <script type="text/javascript" src="js/checkin.js"></script>
 <script type="text/javascript" src="js/checkin-es6.js"></script>
 </head>
@@ -106,11 +101,8 @@ make_banner('Racer Check-In');
 <thead>
   <tr>
     <th/>
-    <th><?php
-      echo column_header(htmlspecialchars(division_label(), ENT_QUOTES, 'UTF-8'), 'division');
-    ?></th>
     <?php if ($use_groups) {
-      echo '<th>'.column_header(htmlspecialchars(group_label(), ENT_QUOTES, 'UTF-8'), 'class').'</th>';
+        echo '<th>'.column_header(group_label(), 'class').'</th>';
     } ?>
     <?php if ($use_subgroups) {
         echo '<th>'.subgroup_label().'</th>';
@@ -127,25 +119,7 @@ make_banner('Racer Check-In');
   </tr>
 </thead>
 
-<tbody id="main_tbody">
-
-</tbody>
-</table>
-<div class="block_buttons">
-<?php if (have_permission(REGISTER_NEW_RACER_PERMISSION)) { ?>
-      <input type="button" value="New Racer"
-        onclick='show_new_racer_form();'/>
-<?php } ?>
-</div>
-
-<script>
-function addrow0(racer) {
-  return add_table_row('#main_tbody', racer,
-                <?php echo $use_groups ? "true" : "false"; ?>,
-                <?php echo $use_subgroups ? "true" : "false"; ?>,
-                <?php echo $xbs ? json_encode($xbs_award_name) : "false"; ?>);
-}
-
+<tbody>
 <?php
 
   list($classes, $classseq, $ranks, $rankseq) = classes_and_ranks();
@@ -154,32 +128,19 @@ function addrow0(racer) {
       .(schema_version() < 2 ? "" : " carphoto,")
       .(schema_version() < 2 ? "class" : "Classes.sortorder").' AS class_sort,'
       .(schema_version() < 2 ? "rank" : "Ranks.sortorder").' AS rank_sort,'
-      .(schema_version() < DIVISION_SCHEMA
-        ? " 1 AS divisionid, 1 AS division_sortorder, 'Default' AS division_name,"
-        : " Divisions.divisionid AS divisionid,"
-         ." Divisions.sortorder AS division_sortorder,"
-         ." Divisions.name AS division_name,")
       .' RegistrationInfo.classid, class, RegistrationInfo.rankid, rank, passedinspection, exclude,'
       .' EXISTS(SELECT 1 FROM RaceChart WHERE RaceChart.racerid = RegistrationInfo.racerid) AS scheduled,'
       .' EXISTS(SELECT 1 FROM RaceChart WHERE RaceChart.classid = RegistrationInfo.classid) AS denscheduled,'
       .' EXISTS(SELECT 1 FROM Awards WHERE Awards.awardname = \''.addslashes($xbs_award_name).'\' AND'
       .'                                   Awards.racerid = RegistrationInfo.racerid) AS xbs'
-      .' FROM '.(schema_version() < DIVISION_SCHEMA 
-               ? inner_join('RegistrationInfo', 'Classes',
-                            'RegistrationInfo.classid = Classes.classid',
-                            'Ranks',
-                            'RegistrationInfo.rankid = Ranks.rankid')
-               : inner_join('RegistrationInfo', 'Classes',
-                            'RegistrationInfo.classid = Classes.classid',
-                            'Ranks',
-                            'RegistrationInfo.rankid = Ranks.rankid',
-                            'Divisions',
-                            'RegistrationInfo.divisionid = Divisions.divisionid'))
-    .' ORDER BY '
+      .' FROM '.inner_join('RegistrationInfo', 'Classes',
+                           'RegistrationInfo.classid = Classes.classid',
+                           'Ranks',
+                           'RegistrationInfo.rankid = Ranks.rankid')
+      .' ORDER BY '
           .($order == 'car' ? 'carnumber, lastname, firstname' :
             ($order == 'class'  ? 'class_sort, rank_sort, lastname, firstname' :
-             ($order == 'division' ? 'division_sortorder, lastname, firstname' :
-              'lastname, firstname')));
+             'lastname, firstname'));
 
 $stmt = $db->query($sql);
 
@@ -187,50 +148,18 @@ $n = 1;
 foreach ($stmt as $rs) {
   // TODO
   $rs['rankseq'] = $ranks[$rs['rankid']]['seq'];
-  echo "addrow0(".json_encode(json_table_row($rs, $n),
-                              JSON_NUMERIC_CHECK | JSON_UNESCAPED_SLASHES |
-                              JSON_HEX_AMP | JSON_HEX_TAG | JSON_HEX_APOS).");\n";
+  checkin_table_row($rs, $use_groups, $use_subgroups, $xbs, $n);
   ++$n;
 }
 ?>
-
-<?php
-$divs = array();
-$stmt = $db->query('SELECT divisionid, name,'
-                   .'  (SELECT COUNT(*) FROM RegistrationInfo'
-                   .'     WHERE RegistrationInfo.divisionid = Divisions.divisionid) AS count'
-                   .' FROM Divisions'
-                   .' ORDER BY sortorder');
-?>
-$(function () {
-var divisions = <?php echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC),
-                                       JSON_NUMERIC_CHECK | JSON_UNESCAPED_SLASHES |
-                                       JSON_HEX_AMP | JSON_HEX_TAG | JSON_HEX_APOS); ?>;
-
-$("#edit_division").empty();
-for (var i in divisions) {
-  $("<option/>")
-      .appendTo("#edit_division")
-      .attr('value', divisions[i].divisionid)
-      .text(divisions[i].name);
-}
-$("<option/>")
-    .appendTo("#edit_division")
-    .attr('value', -1)
-    .text("(Edit divisions)");
-mobile_select_refresh($("#edit_division"));
-
-{
-  var reorder_modal = DivisionsModal(
-    "<?php echo htmlspecialchars(division_label(), ENT_QUOTES, 'UTF-8'); ?>",
-    "<?php echo htmlspecialchars(division_label_pl(), ENT_QUOTES, 'UTF-8'); ?>",
-    divisions);
-
-  $("#edit_division").on('change', function() { on_edit_division_change(reorder_modal); });
-}
-
-});
-</script>
+</tbody>
+</table>
+<div class="block_buttons">
+<?php if (have_permission(REGISTER_NEW_RACER_PERMISSION)) { ?>
+      <input type="button" value="New Racer"
+        onclick='show_new_racer_form();'/>
+<?php } ?>
+</div>
 
 
 <div id='edit_racer_modal' class="modal_dialog hidden block_buttons">
@@ -251,9 +180,58 @@ mobile_select_refresh($("#edit_division"));
   <input id="edit_carname" type="text" name="edit_carname" value=""/>
   <br/>
 
-  <label for="edit_division"><?php echo htmlspecialchars(division_label(), ENT_QUOTES, 'UTF-8'); ?></label>
-  <select id="edit_division"><!-- Populated by javascript --></select>
+<?php
+// $rank_options is a string of <option> elements, one per rank.
+//    $rank_options is used to pick a rank for a new or modified racer.
+//
+// $ranks_and_classes is a string of <option> elements, one for each rank and each class.
+//    $ranks_and_classes is used for picking groups of racers to which a bulk operation
+//    might apply.
 
+    $rank_options = "";
+    $ranks_and_classes = "";
+    $last_classid = 0;
+    $sql = 'SELECT rankid, rank, Ranks.classid, class'
+           .' FROM Ranks INNER JOIN Classes'
+           .' ON Ranks.classid = Classes.classid'
+           .' ORDER BY '
+           .(schema_version() >= 2 ? 'Classes.sortorder, Ranks.sortorder, ' : '')
+           .'class, rank';
+    $stmt = $db->query($sql);
+    foreach ($stmt as $rs) {
+      $rank_options .= "\n".'<option value="'.$rs['rankid'].'"'
+            .' data-class="'.htmlspecialchars($rs['class'], ENT_QUOTES, 'UTF-8').'"'
+           .' data-rank="'.htmlspecialchars($rs['rank'], ENT_QUOTES, 'UTF-8').'"'
+           .'>'
+           .htmlspecialchars($rs['class'], ENT_QUOTES, 'UTF-8')
+           .($use_subgroups
+             ? ' / '.htmlspecialchars($rs['rank'], ENT_QUOTES, 'UTF-8') : '')
+	       .'</option>';
+      if ($rs['classid'] != $last_classid) {
+        $ranks_and_classes .= "\n".'<option value="c'.$rs['classid'].'">'
+                .htmlspecialchars($rs['class'], ENT_QUOTES, 'UTF-8')
+                .'</option>';
+      }
+      if ($use_subgroups) {
+        $ranks_and_classes .= "\n".'<option value="r'.$rs['rankid'].'">'
+                .htmlspecialchars($rs['rank'], ENT_QUOTES, 'UTF-8')
+                .'</option>';
+      }
+      $last_classid = $rs['classid'];
+    }
+
+    if (!$rank_options) {
+      echo "<div id='rank_missing'>\n";
+      echo "<img src='img/status/trouble.png'/>\n";
+      echo "<p>There are no racing groups defined.  "
+          ."Visit the <a href='class-editor.php'>'Edit ".group_label()."'</a>"
+          ." page to define racing groups.</p>\n";
+      echo "</div>";
+    }
+?>
+  <label for="edit_rank">Racing group:</label>
+    <select id="edit_rank"><?php echo $rank_options; ?>
+    </select>
   <br/>
   <label for="eligible">Trophy eligibility:</label>
     <input type="checkbox" class="flipswitch" name="eligible" id="eligible"
@@ -272,8 +250,7 @@ mobile_select_refresh($("#edit_division"));
   </div>
 </form>
 </div>
-  
-  
+
 <div id='photo_modal' class="modal_dialog hidden block_buttons">
   <form id="photo_drop" class="dropzone">
     <input type="hidden" name="action" value="photo.upload"/>
@@ -335,7 +312,7 @@ mobile_select_refresh($("#edit_division"));
       <label id="who_label" for="bulk_who">Assign car numbers to</label>
       <select id="bulk_who">
         <option value="all">All</option>
-        <!-- Replaced by javascript -->
+        <?php echo $ranks_and_classes; ?>
       </select>
 
       <div id="numbering_controls" class="hidable">

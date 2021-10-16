@@ -8,7 +8,7 @@
 //            schema: {status:, details:, button:}
 //            purge: {nracers:, nawards:, nheats:, nresults:}
 //            roster:
-//            groups:
+//            classes:
 //            awards:
 //            settings:
 //            form_fields: {drivers:, radio:, sqlite_path:, odbc_dsn_name:}
@@ -16,14 +16,14 @@ function populate_details(details) {
   $("#database_step div.status_icon img").attr('src', 'img/status/' + details.database.status + '.png');
   $("#schema_step div.status_icon img").attr('src', 'img/status/' + details.schema.status + '.png');
   $("#roster_step div.status_icon img").attr('src', 'img/status/' + details.roster.status + '.png');
-  $("#groups_step div.status_icon img").attr('src', 'img/status/' + details.groups.status + '.png');
+  $("#classes_step div.status_icon img").attr('src', 'img/status/' + details.classes.status + '.png');
   $("#awards_step div.status_icon img").attr('src', 'img/status/' + details.awards.status + '.png');
   $("#settings_step div.status_icon img").attr('src', 'img/status/' + details.settings.status + '.png');
 
   var disabled = (details.schema.button == 'disabled') || !details.database.writable 
   // $("#settings_step input[type='submit']").prop('disabled', disabled);
   $("#roster_step a.button_link, "
-    + "#groups_step a.button_link, "
+    + "#classes_step a.button_link, "
     + "#awards_step a.button_link, "
     + "#settings_step a.button_link").toggleClass('disabled', disabled);
   $("#purge_data_button")
@@ -44,10 +44,12 @@ function populate_details(details) {
       .off('click').on('click', function() { show_initialize_schema_modal(); });
   }
 
+  $("#classes_step a.button_link").text("Edit " + details.classes.plural);
+
   $("#database_step div.step_details").html(details.database.details);
   $("#schema_details").html(details.schema.details);
   $("#roster_step div.step_details").html(details.roster.details);
-  $("#groups_step div.step_details").html(details.groups.details);
+  $("#classes_step div.step_details").html(details.classes.details);
   $("#awards_step div.step_details").html(details.awards.details);
   $("#settings_step div.step_details").html(details.settings.details);
 
@@ -89,6 +91,13 @@ function populate_details(details) {
   $("#purge_nawards_span").text(details.purge.nawards);
 }
 
+function populate_details_from_xml(data) {
+  var details = data.documentElement.getElementsByTagName("details");
+  if (details && details.length > 0) {
+    populate_details(JSON.parse(details[0].textContent));
+  }
+}
+
 function hide_reporting_box() {
   $("#reporting_box").removeClass('success failure').addClass('hidden').css('opacity', 100);
   $("#reporting_box_dismiss").addClass('hidden');
@@ -115,14 +124,19 @@ function report_failure(text) {
   // Has to be explicitly cleared -- no timout to disappear
 }
 
-function report_success_json(data) {
-  if (data.outcome.summary == 'success') {
-    if (data.hasOwnProperty('details')) {
-      populate_details(data.details);
-    }
+function report_success_xml(data) {
+  var success = data.documentElement.getElementsByTagName("success");
+  if (success && success.length > 0) {
+    populate_details_from_xml(data);
     report_success();
   } else {
-    report_failure(data.outcome.description);
+    var fail = data.documentElement.getElementsByTagName("failure");
+    if (fail && fail.length > 0) {
+      report_failure(fail[0].textContent);
+    } else {
+      // Program bug -- the response should specify either <success/> for <failure/>
+      report_failure("Not successful");
+    }
   }
 }
 
@@ -148,7 +162,7 @@ function handle_ezsetup_modal_submit() {
          {type: 'POST',
           data: serialized, // action = setup.nodata
           success: function(data) {
-            report_success_json(data);
+            report_success_xml(data);
           },
           error: function(event, jqXHR, ajaxSettings, thrownError) {
             report_failure(thrownError);
@@ -197,7 +211,7 @@ function handle_advanced_database_modal_submit() {
          {type: 'POST',
           data: serialized, // action = setup.nodata
           success: function(data) {
-            report_success_json(data);
+            report_success_xml(data);
           },
           error: function(event, jqXHR, ajaxSettings, thrownError) {
             report_failure(thrownError);
@@ -232,7 +246,7 @@ function confirm_purge(purge) {
             data: {action: 'database.purge',
                    purge: purge},
             success: function(data) {
-              report_success_json(data);
+              report_success_xml(data);
             },
             error: function(event, jqXHR, ajaxSettings, thrownError) {
               report_failure(thrownError);
@@ -257,7 +271,7 @@ function handle_initialize_schema() {
           data: {action: 'database.execute',
                  script: 'schema'},
           success: function(data) {
-            report_success_json(data);
+            report_success_xml(data);
           },
           error: function(event, jqXHR, ajaxSettings, thrownError) {
             report_failure(thrownError);
@@ -280,7 +294,7 @@ function handle_update_schema() {
           data: {action: 'database.execute',
                  script: 'update-schema'},
           success: function(data) {
-            report_success_json(data);
+            report_success_xml(data);
           },
           error: function(event, jqXHR, ajaxSettings, thrownError) {
             report_failure(thrownError);

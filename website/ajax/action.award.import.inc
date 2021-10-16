@@ -3,7 +3,10 @@ require_once('inc/sql-script.inc');
 require_once(sql_file_path('column-widths'));
 require_once('inc/awards.inc');
 
+start_response();
+
 if (have_permission(SET_UP_PERMISSION)) {
+
   maybe_populate_award_types();
   
   $fields = array('awardname' => true,
@@ -19,19 +22,19 @@ if (have_permission(SET_UP_PERMISSION)) {
 
   foreach ($fields as $fieldname => $required) {
     if ($required && !isset($_POST[$fieldname])) {
-      json_failure('missingrequired', "Missing required field $fieldname");
+      echo '<failure code="missingrequired">Missing required field '.$fieldname.'</failure>';
       $ok = false;
       break;
     }
   }
 } else {
-  json_not_authorized();
+  not_authorized_body();
   $ok = false;
 }
 
 if ($ok) {
   if (strlen(trim($_POST['awardname'])) == 0) {
-    json_failure('emptyaward', "Award name can\'t be empty");
+    echo '<failure code="emptyaward">Award name can\'t be empty</failure>';
     $ok = false;
   }
 }
@@ -41,10 +44,19 @@ if ($ok) {
   $awardtypeid = read_single_value('SELECT awardtypeid FROM AwardTypes WHERE awardtype = :awardtype',
                                  array(':awardtype' => $awardtype));
   if ($awardtypeid === false) {
-    json_failure('unknownawardtype',
-                 "Unrecognized award type.  Award type must be one of: ".
-                 $db->query('SELECT awardtype FROM AwardTypes ORDER BY awardtype')
-                 .fetchAll(PDO::FETCH_COLUMN).join(', '));
+    echo '<failure code="unknownawardtype">Unrecognized award type.  Award type must be one of: ';
+    $stmt = $db->prepare('SELECT awardtype FROM AwardTypes ORDER BY awardtype');
+    $stmt->execute(array());
+    $types = array();
+    foreach ($stmt as $row) {
+      $types[] = $row['awardtype'];
+    }
+    for ($i = 0; $i < count($types); ++$i) {
+      if ($i > 0) { echo ', '; }
+      if ($i + 1 == count($types)) { echo 'or '; }
+      echo '"'.htmlspecialchars($types[$i], ENT_QUOTES, 'UTF-8').'"';
+    }
+    echo '.</failure>';
     $ok = false;
   }
 }
@@ -57,7 +69,7 @@ if ($ok) {
       $classid = read_single_value('SELECT classid FROM Classes WHERE class = :classname',
                                    array(':classname' => $classname));
       if ($classid === false) {
-        json_failure('unknownclass', "Unrecognized class");
+        echo '<failure code="unknownclass">Unrecognized class</failure>';
         $ok = false;
       }
     }
@@ -72,14 +84,16 @@ if ($ok) {
       $rank = read_single_row('SELECT rankid, classid FROM Ranks WHERE rank = :rankname',
                                   array(':rankname' => $rankname));
       if ($rank === false) {
-        json_failure('unknownrank', "Unrecognized rank");
+        echo '<failure code="unknownrank">Unrecognized rank</failure>';
         $ok = false;
       } else {
         $rankid = $rank[0];
         if ($classid == 0) {
           $classid = $rank[1];
         } else if ($classid != $rank[1]) {
-          json_failure('wrongclass', "Subgroup not in this ".group_label_lc());
+          echo '<failure code="wrongclass">Subgroup not in this '
+          .htmlspecialchars(group_label_lc(), ENT_QUOTES, 'UTF-8')
+          .'</failure>';
           $ok = false;
         }
       }
@@ -112,10 +126,10 @@ if ($ok) {
       $racerid = read_single_value('SELECT racerid FROM RegistrationInfo WHERE carnumber = :carnumber',
                                    array(':carnumber' => $_POST['carnumber']));
     } else if ($nfound == 0) {
-      json_failure('unknowncarnumber', "Unknown car number");
+      echo '<failure code="unknowncarnumber">Unknown car number</failure>';
       $ok = false;
     } else {
-      json_failure('ambiguouscarnumber', "Ambiguous car number");
+      echo '<failure code="ambiguouscarnumber">Ambiguous car number</failure>';
       $ok = false;
     }
   }
@@ -130,12 +144,14 @@ if ($ok) {
                             ':rankid' => $rankid,
                             ':racerid' => $racerid,
                             ':sort' => $sort))) {
-    json_failure('failedinsert', "Failed insert.");
+    echo '<failure code="failedinsert">Failed insert.</failure>';
     $ok = false;
   }
 }
 
 if ($ok) {
-  json_success();
+  echo '<success/>';
 }
+
+end_response();
 ?>

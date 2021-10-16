@@ -1,8 +1,6 @@
 package org.jeffpiazza.derby.devices;
 
 import java.lang.reflect.Method;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import org.jeffpiazza.derby.Flag;
 import org.jeffpiazza.derby.profiles.BertDrakeByProfile;
 import org.jeffpiazza.derby.profiles.FastTrackByProfile;
@@ -15,8 +13,6 @@ import org.jeffpiazza.derby.profiles.JitRacemasterByProfile;
 import org.jeffpiazza.derby.profiles.NewBoldByProfile;
 import org.jeffpiazza.derby.profiles.PdtByProfile;
 import org.jeffpiazza.derby.profiles.TheJudgeByProfile;
-import org.jeffpiazza.derby.timer.Profile;
-import org.jeffpiazza.derby.timer.TimerDeviceWithProfile;
 
 public class AllDeviceTypes {
   // The universe of all possible device classes
@@ -63,19 +59,8 @@ public class AllDeviceTypes {
       Method m = type.getMethod("toHumanString");
       return (String) m.invoke(null);
     } catch (Exception ex) {
+      return null;
     }
-
-    if (TimerDeviceWithProfile.class.isAssignableFrom(type)) {
-      try {
-        Method m = type.getMethod("profile");
-        Profile p = (Profile) m.invoke(null);
-        return p.name;
-      } catch (Exception ex) {
-      }
-    }
-
-    // Last resort
-    return type.getName();
   }
 
   public static void listDeviceClassNames() {

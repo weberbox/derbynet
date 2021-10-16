@@ -5,19 +5,21 @@
 
 require_once('inc/schema_version.inc');
 require_once('inc/sql-script.inc');
-require_once('inc/json-classes.inc');
+require_once('inc/classes-xml.inc');
 require_once(sql_file_path('column-widths'));
 require_once('inc/events.inc');
+
+start_response();
 
 if (have_permission(SET_UP_PERMISSION)) {
   if (isset($_POST['name']) && isset($_POST['classid'])) {
     $rankname = substr(trim($_POST['name']), 0, RANK_COLUMN_WIDTH);
     $classid = $_POST['classid'];
     if ($rankname == '') {
-      json_failure('noname', "No name provided for the new ".group_label());
+       echo "<failure code='noname'>No name provided for the new ".group_label()."</failure>\n";
     } else if (read_single_value('SELECT COUNT(*) FROM Classes WHERE classid = :classid',
                                  array(':classid' => $classid)) == 0) {
-      json_failure('noclass', "No class has classid $classid");
+      echo "<failure code='noclass'>No class has classid ".$classid."</failure>\n";
     } else {
       $stmt = $db->prepare('INSERT INTO Ranks(rank, classid) VALUES(:name, :classid)');
       $stmt->execute(array(':name' => $rankname,
@@ -38,13 +40,15 @@ if (have_permission(SET_UP_PERMISSION)) {
                              ':rankid' => $rankid));
       }
 
-      json_out('classes', json_all_classes());
-      json_success();
+      echo "<success/>\n";
+      emit_all_classes();
     }
   } else {
-    json_failure('missing-args', "Unrecognized argument signature");
+    echo "<failure code='missing-args'>Unrecognized argument signature</failure>\n";
   }
 } else {
-  json_failure('permission', "Not authorized");
+  echo "<failure code='permission'>Not authorized</failure>\n";
 }
+
+end_response();
 ?>

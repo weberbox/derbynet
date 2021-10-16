@@ -1,12 +1,15 @@
 <?php
 
 if (!isset($_GET['path'])) {
-  json_failure('nopath', "No PATH query argument provided");
+  echo '<failure code="nopath">No PATH query argument provided</failure>'."\n";
 } else {
   $path = $_GET['path'];
-  json_out('stat', array('file' => $path,
-                         'readable' => is_readable($path),
-                         'writable' => is_writable($path),
-                         'isdir' => is_dir($path)));
+  echo '<path'
+      .' readable="'.intval(is_readable($path)).'"'
+      .' writable="'.intval(is_writable($path)).'"'
+      .' directory="'.intval(is_dir($path)).'"'
+      .'>';
+  echo htmlspecialchars($path, ENT_QUOTES, 'UTF-8');
+  echo '</path>'."\n";
 }
 ?>
