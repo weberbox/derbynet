@@ -1,10 +1,20 @@
-  location /derbynet {
+  location / {
+    try_files $uri $uri.html $uri/ @extensionless-php;
     index index.php;
-  }  
+  }
 
-  location ~ derbynet/.*\.php(/.*)?$ {
+  location ~ /.*\.php(/.*)?$ {
     client_max_body_size 16M;
     include snippets/fastcgi-php.conf;
-    fastcgi_pass unix:/var/run/php5-fpm.sock;
+    fastcgi_pass unix:/run/php/php7.2-fpm.sock;
     fastcgi_param CONFIG_DIR /var/www/html/derbynet/local;
   }
+
+  location @extensionless-php {
+    rewrite ^(.*)$ $1.php last;
+  }
+
+  location /downloads/ {
+    autoindex on;
+  }
+

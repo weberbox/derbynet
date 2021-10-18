@@ -1,0 +1,10 @@
+
+.welcome-bg {
+    background-image: url(/img/pattern.png) !important;
+    height: 100vh;
+}
+
+.welcome-img-cslogo {
+    padding-top: 20px;
+    height: 600px;
+}

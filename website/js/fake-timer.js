@@ -16,7 +16,7 @@ var g_timer_interval = 0;
 
 var g_auto_mode = false;
 // Seconds between heat ready and race start when in auto mode.
-var g_auto_mode_pace = 5;
+var g_auto_mode_pace = 10;
 
 
 function on_lane_count_change() {
@@ -178,7 +178,7 @@ function send_identified() {
          {type: 'POST',
           data: {action: 'timer-message',
                  message: 'IDENTIFIED',
-                 lane_count: 6,
+                 lane_count: 4,
                  timer: 'FakeTimer',
                  human: 'Fake Timer',
                  // ident: '(Ident TBD)',

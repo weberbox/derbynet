@@ -42,7 +42,7 @@ div#subjects-context {
 }
 div#subjects-scroll {
   position: absolute;
-  top: 130px;
+  top: 155px;
   bottom: 0;
   overflow-y: auto;
 }

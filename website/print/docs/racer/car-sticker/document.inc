@@ -19,10 +19,10 @@ class CarSticker extends PrintableRacerDocument {
                                  'default' => 0),
                  'outline' => array('type' => 'bool',
                                     'desc' => 'Draw outline around each label.',
-                                    'default' => false),
+                                    'default' => true),
                  'show_class' => array('type' => 'bool',
                                        'desc' => 'Include '.group_label_lc(),
-                                       'default' => true),
+                                       'default' => !use_subgroups()),
                  'show_rank' => array('type' => 'bool',
                                       'desc' => 'Include '.subgroup_label_lc(),
                                       'default' => use_subgroups()),
@@ -132,11 +132,6 @@ class CarSticker extends PrintableRacerDocument {
     
     $cx = $left + $this->params['doc_width']/2;
 
-    /* Show the car number */
-    $this->pdf->CenteredSequence($cx, $top + $this->params['carno_y'],
-                                 array(new SetFontTag('Helvetica', 'B', $this->params['carno_font_size']),
-                                       $racer['carnumber']));
-
     if ($this->show_name) {
       $this->pdf->CenteredSequence($cx, $top + $this->params['name_y'],
                                    array(new SetFontTag('Times', '', $this->params['name_font_size']),
@@ -144,6 +139,15 @@ class CarSticker extends PrintableRacerDocument {
                                          new SetFontTag('Times', 'B', $this->params['name_font_size']),
                                          $racer['lastname']));
     }
+
+    $this->pdf->SetTextColor(255, 0, 0);
+
+    /* Show the car number */
+    $this->pdf->CenteredSequence($cx, $top + $this->params['carno_y'],
+                                 array(new SetFontTag('Helvetica', 'B', $this->params['carno_font_size']),
+                                       $racer['carnumber']));
+
+    $this->pdf->SetTextColor(0, 0, 0);
 
     if ($this->show_class || $this->show_rank) {
       $category = "";

@@ -42,6 +42,7 @@ $(function () {
 <?php require('inc/stylesheet.inc'); ?>
 <link rel="stylesheet" type="text/css" href="css/mobile.css"/>
 <link rel="stylesheet" type="text/css" href="css/main-table.css"/>
+<link rel="stylesheet" type="text/css" href="css/standings-table.css"/>
 <style type="text/css">
 
 .center-select {
@@ -60,7 +61,7 @@ $(function () {
 
 <div class="center-select">
 <h3><?php
-$scoring = read_raceinfo('scoring', 0);
+$scoring = read_raceinfo('scoring', 1);
 if (read_raceinfo_boolean('use-points')) {
   if ($scoring == 0) {
     echo "Scoring by points";

@@ -41,9 +41,9 @@ var g_use_subgroups = <?php echo use_subgroups() ? "true" : "false"; ?>;
 <div class="control_column">
 
   <div class="control_group heat_control_group">
-    <div id="start_race_button_div" class="block_buttons hidden">
+    <!--<div id="start_race_button_div" class="block_buttons hidden">
       <input type="button" value="Start Race" onclick="handle_start_race_button()"/>
-    </div>
+    </div> -->
     <div class="centered_flipswitch">
       <input type="checkbox" class="flipswitch" name="is-currently-racing" id="is-currently-racing"
         checked="checked"

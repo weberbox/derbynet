@@ -1,15 +1,15 @@
 Package: derbynet-server
-Maintainer: Jeff Piazza <jeff@jeffpiazza.org>
-Version: 6.0-@BUILD@
+Maintainer: James Weber
+Version: 6.1-@BUILD@
 Priority: optional
 Architecture: all
 Depends: nginx,
-        php-fpm | php5-fpm,
-        php-curl | php5-curl,
-        php-gd | php5-gd,
-        php-sqlite3 | php5-sqlite,
+        php-fpm | php7.2-fpm,
+        php-curl | php7.2-curl,
+        php-gd | php7.2-gd,
+        php-sqlite3 | php7.2-sqlite,
         ssl-cert
 Replaces: derbynet (<= 3.0-1)
 Breaks: derbynet (<= 3.0-1)
-Homepage: http://jeffpiazza.github.io/derbynet/
+Homepage: http://github.com/weberbox/derbynet/tree/v6.1
 Description: Pinewood derby race management web server

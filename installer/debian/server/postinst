@@ -10,11 +10,11 @@ else
     ID=linux
 fi
 
-######## Create /var/lib/derbynet directory, for storing race information
+######## Create /usr/local/bin/derbynet directory, for storing race information
 
-mkdir -m 777 /var/lib/derbynet 2>/dev/null || true
+mkdir -m 777 /usr/local/bin/derbynet/data 2>/dev/null || true
 
-######## Create local directory, point to /var/lib/derbynet
+######## Create local directory, point to /usr/local/bin/derbynet
 
 mkdir -m 777 /var/www/html/derbynet/local 2>/dev/null || true
 
@@ -27,7 +27,7 @@ grep -q -v JUDGING_PERMISSION /var/www/html/derbynet/local/config-roles.inc && \
 
 cat <<EOF >/var/www/html/derbynet/local/default-file-path.inc
 <?php
-\$default_file_path = "/var/lib/derbynet";
+\$default_file_path = "/usr/local/bin/derbynet/data";
 ?>
 EOF
 
@@ -37,12 +37,12 @@ EOF
 # photo.
 MAX_UPLOAD_SIZE=16M
 
-if [ -e /etc/php5 ] ; then
+if [ -e /etc/php7.2 ] ; then
     sed -i.pre-derbynet -e "s/^upload_max_filesize = [28]M/upload_max_filesize = $MAX_UPLOAD_SIZE/" \
         -e "s#^post_max_size = [2-8]M#post_max_size = $MAX_UPLOAD_SIZE#" \
-        /etc/php5/fpm/php.ini
-    echo Restarting php5-fpm
-    service php5-fpm restart
+        /etc/php7.2/fpm/php.ini
+    echo Restarting php7.2-fpm
+    service php7.2-fpm restart
 fi
 for INI in `find /etc/php -name php.ini` ; do
     sed -i.pre-derbynet \
@@ -68,23 +68,11 @@ else
     # candidates; 'tail' picks the last one.
     SOCKET=`find "$VAR_RUN" -name \*fpm.sock | tail -n 1`
 fi
-sed -i -e"s#/var/run/php5-fpm.sock#$SOCKET#" /etc/nginx/derbynet/location.snippet
+sed -i -e"s#/var/run/php7.2-fpm.sock#$SOCKET#" /etc/nginx/sites-available/derbynet
 
-######### Add derbynet location clause if not already there
+rm /etc/nginx/sites-enabled/default
 
-grep derbynet /etc/nginx/sites-available/default >/dev/null 2>&1 || \
-sed -i -e '/^[ \t]*location \/ {/ i\
-\tinclude derbynet/location.snippet; \
-
-' /etc/nginx/sites-available/default
-
-######## Enable SSL with self-signed ("snakeoil") certificates provided by ssl-cert package
-
-sed -i \
-    -e 's!# *\(listen 443 ssl .*\)!\1!' \
-	-e 's!# *\(listen [::]:443 ssl .*\)!\1!' \
-    -e 's!# *\(include snippets/snakeoil.conf;\)!\1!' \
-    /etc/nginx/sites-available/default
+ln -s /etc/nginx/sites-available/derbynet /etc/nginx/sites-enabled
 
 ######## Restart
 

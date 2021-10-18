@@ -1,0 +1,11 @@
+
+table.main_table { 
+    width: 99%;
+    margin-left: 10px;
+    border: 1px solid;
+  }
+  
+  th {
+    border: 1px solid;
+    background: #fffacd;
+  }

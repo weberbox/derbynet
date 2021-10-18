@@ -52,6 +52,7 @@ function make_spacer_if($cond) {
 <?php require('inc/stylesheet.inc'); ?>
 <script type="text/javascript" src="js/jquery.js"></script>
 <script type="text/javascript" src="js/modal.js"></script>
+<link rel="stylesheet" type="text/css" href="css/main.css"/>
 <style type="text/css">
 div.index_spacer {
   height: 40px;
@@ -72,27 +73,12 @@ div.index_column {
   height: 30px;
 }
 
-.block_buttons a.button_link.before_button,
-.block_buttons input.before_button[type='submit'] {
-  color: #ffffcc;
-}
-.block_buttons a.button_link.during_button,
-.block_buttons input.during_button[type='submit'] {
-  color: #ddffdd;
-}
-.block_buttons a.button_link.after_button,
-.block_buttons input.after_button[type='submit'] {
-  color: #ddddff;
-}
-.block_buttons a.button_link.other_button,
-.block_buttons input.other_button[type='submit'] {
-  color: #ffddff;
-}
 </style>
 </head>
 <body>
 <?php
-  make_banner('', /* back_button */ false);
+  make_banner('Pack 490', /* back_button */ false);
+  echo "<div class='upper_info'>Make a selection: </div> \n";
 
  $need_spacer = false;
 
@@ -152,7 +138,7 @@ if ($two_columns) {
 // *********** After ***************
 $need_spacer = make_link_button('Present Awards', 'awards-presentation.php', PRESENT_AWARDS_PERMISSION, 'after_button');
 $need_spacer = make_link_button('Standings', 'standings.php', VIEW_AWARDS_PERMISSION, 'after_button') || $need_spacer;
-$need_spacer = make_link_button('Export Results', 'export.php', VIEW_RACE_RESULTS_PERMISSION, 'after_button') || $need_spacer;
+$need_spacer = make_link_button('Export Results', 'export.php', SET_UP_PERMISSION, 'after_button') || $need_spacer;
 
 $need_spacer = make_link_button('Retrospective', 'history.php', SET_UP_PERMISSION, 'after_button') || $need_spacer;
 
@@ -160,7 +146,7 @@ make_spacer_if($need_spacer);
 
 // *********** Other ***************
 make_link_button('Printables', 'print.php', ASSIGN_RACER_IMAGE_PERMISSION, 'other_button');
-make_link_button('About', 'about.php', -1, 'other_button');
+make_link_button('About', 'about.php', SET_UP_PERMISSION, 'other_button');
 
 if (@$_SESSION['role']) {
   make_link_button('Log out', 'login.php?logout', -1, 'other_button');

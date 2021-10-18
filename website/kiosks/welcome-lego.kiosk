@@ -10,17 +10,21 @@
 <style>
 .full_page_center img {
 max-width: 100%;
-max-height: 80vh;
+max-height: 80%;
 }
 </style>
+<link rel="stylesheet" type="text/css" href="/css/welcome.css"/>
 </head>
 <body>
+<div class="welcome-bg">
 <div class="full_page_center">
-<img src="image.php/emblem.png"/>
+<img class="welcome-img-cslogo" src="image.php/emblem.png"/>
 </div>
-<p class="kiosk_title">Welcome</p>
-
+<?php
+echo "<p class='kiosk_title'>Welcome to the Pack 490</p>";
+echo "<p class='kiosk_title'>Lego Derby</p>";
+?>
+</div>
 <?php require_once('inc/ajax-failure.inc'); ?>
-
 </body>
 </html>

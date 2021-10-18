@@ -1,9 +1,38 @@
 /* Site-wide look and feel */
 
+/* poppins-regular - latin */
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 400;
+  src: url('../fonts/poppins-v5-latin-regular.eot'); /* IE9 Compat Modes */
+  src: local('Poppins Regular'), local('Poppins-Regular'),
+       url('../fonts/poppins-v5-latin-regular.eot?#iefix') format('embedded-opentype'), /* IE6-IE8 */
+       url('../fonts/poppins-v5-latin-regular.woff2') format('woff2'), /* Super Modern Browsers */
+       url('../fonts/poppins-v5-latin-regular.woff') format('woff'), /* Modern Browsers */
+       url('../fonts/poppins-v5-latin-regular.ttf') format('truetype'), /* Safari, Android, iOS */
+       url('../fonts/poppins-v5-latin-regular.svg#Poppins') format('svg'); /* Legacy iOS */
+}
+
+/* lato-regular - latin */
+@font-face {
+  font-family: 'Lato';
+  font-style: normal;
+  font-weight: 400;
+  src: url('../fonts/lato-v14-latin-regular.eot'); /* IE9 Compat Modes */
+  src: local('Lato Regular'), local('Lato-Regular'),
+       url('../fonts/lato-v14-latin-regular.eot?#iefix') format('embedded-opentype'), /* IE6-IE8 */
+       url('../fonts/lato-v14-latin-regular.woff2') format('woff2'), /* Super Modern Browsers */
+       url('../fonts/lato-v14-latin-regular.woff') format('woff'), /* Modern Browsers */
+       url('../fonts/lato-v14-latin-regular.ttf') format('truetype'), /* Safari, Android, iOS */
+       url('../fonts/lato-v14-latin-regular.svg#Lato') format('svg'); /* Legacy iOS */
+}
+
 body {
     font-size: 1em;
     line-height: 1.3;
-    font-family: sans-serif;
+    font-family: "Lato", sans-serif;
+    font-weight: 600;
     margin: 0px;
 }
 
@@ -12,6 +41,7 @@ body {
   width: 100%;
   height: 64px;
   background-color: #023882;
+  margin-bottom: 20px;
 }
 
 .banner .back_button {
@@ -20,13 +50,15 @@ body {
     width: 66px;
     padding-top: 12px;
     cursor: pointer;
+    padding-left: 15px;
 }
 
 .banner .banner_title {
   color: white;
-  font-size: 50px;
+  font-size: 45px;
   text-align: center;
-  font-family: sans-serif;
+  font-family: "Poppins", sans-serif;
+  font-weight: 600;
 
   position: absolute;
   left: 66px;
@@ -112,6 +144,19 @@ tbody {
   margin-top: 10px;
 }
 
+h2.now_running {
+  padding-left: 5px;
+}
+
+.upper_info {
+  font-size: 40px;
+  line-height: 1.3;
+  font-family: 'Poppins', serif;
+  font-weight: 700;
+  margin-bottom: 30px;
+  text-align: center;
+}
+
 .block_buttons input,
 .block_buttons select,
 .block_buttons optgroup,
@@ -126,28 +171,19 @@ tbody {
 .block_buttons input[type='submit'],
 .block_buttons a.button_link {
     display: block;
-	width: 240px;
-	margin-left: auto;
-	margin-right: auto;
+    width: 240px;
+	  margin-left: auto;
+  	margin-right: auto;
     margin-top:3px;
-	margin-bottom: 20px;
+    margin-bottom: 20px;
+    display:block;
     padding:10px 15px;
     font-size: x-large;
-    font-family: sans-serif;
-    line-height: 1.3;
-}
+    font-family: "Lato";
+    font-weight: 700;
 
-.block_buttons input[type='button'],
-.block_buttons input[type='submit'],
-.block_buttons .button_link {
     color:#ffffff;
     background: #2d2d2d; /* Old browsers */
-    background: -moz-linear-gradient(top,  #424242 0%, #2d2d2d 100%); /* FF3.6+ */
-    background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,#424242), color-stop(100%,#2d2d2d)); /* Chrome,Safari4+ */
-    background: -webkit-linear-gradient(top,  #424242 0%,#2d2d2d 100%); /* Chrome10+,Safari5.1+ */
-    background: -o-linear-gradient(top,  #424242 0%,#2d2d2d 100%); /* Opera 11.10+ */
-    background: -ms-linear-gradient(top,  #424242 0%,#2d2d2d 100%); /* IE10+ */
-    background: linear-gradient(top,  #424242 0%,#2d2d2d 100%); /* W3C */
     border: 1px solid #666666;
     border-right-width: 1px;
     border-radius: 0.4em 0.4em 0.4em 0.4em;
@@ -159,21 +195,21 @@ tbody {
   height: 33px;
   padding-top: 9px;
   padding-bottom: 9px;
-
-  font-family:
-      -apple-system,
-      BlinkMacSystemFont,
-      “Segoe UI”,
-      Roboto,
-      Helvetica,
-      Arial,
-      sans-serif;
-
-  font-weight: normal;
+  font-family: "Lato";
+  font-weight: 700;
   text-align: center;
   text-decoration: none;
   text-shadow: none;
   color: #ffffff;
+}
+
+.block_buttons a.button_link:hover { 
+  background-color: #f7d117
+}
+
+.block_buttons input[type='submit']:hover,
+.block_buttons input[type='button']:hover {
+	background-color: #f7d117
 }
 
 .block_buttons input[disabled][type='button'],
@@ -268,6 +304,10 @@ tbody {
 
 .wide_modal {
   width: 500px;
+}
+
+.extra_wide_modal {
+  width: 1000px;
 }
 
 .settings_group {

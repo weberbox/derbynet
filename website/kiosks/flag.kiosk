@@ -8,6 +8,7 @@
 <?php require('inc/stylesheet.inc'); ?>
 <link rel="stylesheet" type="text/css" href="css/kiosks.css"/>
 <link rel="stylesheet" type="text/css" href="css/award-presentations-kiosk.css"/>
+<link rel="stylesheet" type="text/css" href="/css/welcome.css"/>
 <style type="text/css">
 html {
   background-color: rgb(230, 230, 230);
@@ -24,6 +25,7 @@ html {
 </style>
 </head>
 <body>
+<div class="welcome-bg">
 <?php
 require_once('inc/banner.inc');
 make_banner('', /* back_button */ false);

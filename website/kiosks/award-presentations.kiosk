@@ -6,6 +6,7 @@
 <script type="text/javascript" src="js/jquery.js"></script>
 <?php require('inc/kiosk-poller.inc'); ?>
 <?php require('inc/stylesheet.inc'); ?>
+<?php require('inc/banner.inc'); ?>
 <link rel="stylesheet" type="text/css" href="css/kiosks.css"/>
 <link rel="stylesheet" type="text/css" href="css/award-presentations-kiosk.css"/>
 <script type="text/javascript">
@@ -17,6 +18,7 @@
 <script type="text/javascript" src="js/award-presentations-kiosk.js"></script>
 </head>
 <body>
+<?php make_banner('Pack 490 Derby', /* back_button */ false); ?>
 <div class="award-background">
   <video class="confetti" muted="true" loop="true">
     <source src="confetti.webm" type="video/webm"/>

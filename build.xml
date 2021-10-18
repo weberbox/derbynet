@@ -26,6 +26,9 @@
   <condition property="is_windows">
     <os family="windows"/>
   </condition>
+  <condition property="is_unix">
+    <os family="unix"/>
+  </condition>
 
   <target name="clean"
           description="Remove generated artifacts for a clean build environment">

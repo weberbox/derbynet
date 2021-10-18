@@ -129,14 +129,14 @@ function use_subgroups() {
 // Presumably they're in the Windows registry somewhere.
 
 function group_label() {
-  return read_raceinfo('group-label', 'Den');
+  return read_raceinfo('group-label', 'Scout');
 }
 function group_label_lc() {
   return strtolower(group_label());
 }
 
 function subgroup_label() {
-  return read_raceinfo('subgroup-label', 'Subgroup');
+  return read_raceinfo('subgroup-label', 'Rank');
 }
 function subgroup_label_lc() {
   return strtolower(subgroup_label());
@@ -157,7 +157,7 @@ function image_base_dir() {
 }
 function image_file_path($filename) {
   return image_base_dir().DIRECTORY_SEPARATOR
-      .read_raceinfo("images-dir", 'Generic').DIRECTORY_SEPARATOR
+      .read_raceinfo("images-dir", 'Cub Scouts').DIRECTORY_SEPARATOR
       .$filename;
 }
 
@@ -166,7 +166,7 @@ function update_period() {
 }
 
 function get_lane_count() {
-  return read_raceinfo('lane_count', 0);
+  return read_raceinfo('lane_count', 4);
 }
 
 // get_lane_count is used for creating schedules, while

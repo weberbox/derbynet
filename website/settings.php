@@ -92,7 +92,7 @@ $finish_formatting = get_finishtime_formatting_string();
 if (read_raceinfo('drop-slowest') && read_raceinfo('scoring', -1) == -1) {
   write_raceinfo('scoring', 1);
 }
-$scoring = read_raceinfo('scoring', 0);
+$scoring = read_raceinfo('scoring', 1);
 
 ?>
 
@@ -135,7 +135,7 @@ $scoring = read_raceinfo('scoring', 0);
       <p>
         <input id="track-length" name="track-length" type="number" min="0" max="999"
                class="not-mobile"
-               value="<?php echo read_raceinfo('track-length', 40); ?>"/>
+               value="<?php echo read_raceinfo('track-length', 32); ?>"/>
         <label for="track-length">Track length (in feet)</label>
       </p>
       <p>Displayed time precision:
@@ -211,13 +211,13 @@ $scoring = read_raceinfo('scoring', 0);
       </p>
       <p>
         <input id="n-den" name="n-den-trophies" type="number" min="0" max="20" class="not-mobile"
-               value="<?php echo read_raceinfo('n-den-trophies', 3); ?>"/>
+               value="<?php echo read_raceinfo('n-den-trophies', 0); ?>"/>
         <label for="n-den">Number of speed trophies per
                <span class="group-label"><?php echo group_label_lc(); ?></span></label>
       </p>
       <p>
         <input id="n-rank" name="n-rank-trophies" type="number" min="0" max="20" class="not-mobile"
-               value="<?php echo read_raceinfo('n-rank-trophies', 0); ?>"/>
+               value="<?php echo read_raceinfo('n-rank-trophies', 3); ?>"/>
         <label for="n-pack">Number of speed trophies per
                <span class="subgroup-label"><?php echo subgroup_label_lc(); ?></span></label>
       </p>

@@ -14,6 +14,8 @@ require_once('inc/standings.inc');
 <?php require('inc/kiosk-poller.inc'); ?>
 <?php require('inc/stylesheet.inc'); ?>
 <link rel="stylesheet" type="text/css" href="css/kiosks.css"/>
+<link rel="stylesheet" type="text/css" href="css/standings-table.css"/>
+<link rel="stylesheet" type="text/css" href="css/standings-kiosk.css"/>
 <style type="text/css">
 body { overflow: hidden; }
 /* This draws a divider line above the very first visible row, useful for scrolling */

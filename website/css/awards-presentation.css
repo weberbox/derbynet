@@ -24,9 +24,9 @@
 
 .listview {
   position: absolute;
-  top: 200px;
+  top: 250px;
   bottom: 0;
-  left: 0;
+  left: 10px;
   width: 50%;
   overflow-x: hidden;
   overflow-y: auto;

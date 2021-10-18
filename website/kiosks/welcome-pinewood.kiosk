@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<title>Welcome</title>
+<script type="text/javascript" src="js/jquery.js"></script>
+<?php require('inc/kiosk-poller.inc'); ?>
+<?php require('inc/stylesheet.inc'); ?>
+<link rel="stylesheet" type="text/css" href="css/kiosks.css"/>
+<style>
+.full_page_center img {
+max-width: 100%;
+max-height: 80%;
+}
+</style>
+<link rel="stylesheet" type="text/css" href="/css/welcome.css"/>
+</head>
+<body>
+<div class="welcome-bg">
+<div class="full_page_center">
+<img class="welcome-img-cslogo" src="image.php/emblem.png"/>
+</div>
+<?php
+echo "<p class='kiosk_title'>Welcome to the Pack 490</p>";
+echo "<p class='kiosk_title'>Pinewood Derby</p>";
+?>
+</div>
+<?php require_once('inc/ajax-failure.inc'); ?>
+</body>
+</html>

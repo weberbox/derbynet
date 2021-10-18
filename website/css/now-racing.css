@@ -1,4 +1,10 @@
 
+.main-table {
+  height: 843px !important;
+  margin-left: 15px;
+  width: 98%;
+}
+
 .flying {
     position: fixed;
     background-color: red;
@@ -9,6 +15,7 @@
 
     padding: 13px;
     display: table;
+    margin: 0px !important;
 }
 
 .flying span {
@@ -26,7 +33,7 @@ table {
 }
 
 td {
-    border: 14px solid black;
+    border: 12px solid black;
     text-align: center;
 }
 
@@ -75,7 +82,7 @@ table, td {
 td {
     vertical-align: middle;
     /* ondeck.css:10 sets a 13px padding which makes more difference than you'd think. */
-    padding: 0px;
+    padding: 0 0 0 5px;
 }
 /* Not floating the img leaves some extra whitespace below the photo,
    for reasons I don't understand (empty anonymous block box?). */

@@ -18,9 +18,9 @@
 
 #awards {
     position: absolute;
-    left: 0;
+    left: 10px;
     width: 300px;
-    top: 140px; 
+    top: 200px; 
     bottom: 0;
     overflow-x: hidden;
     overflow-y: auto;
@@ -80,9 +80,9 @@
 
 #racers {
     position: absolute;
-    left: 300px;
+    left: 320px;
     right: 0;
-    top: 140px;
+    top: 200px;
     bottom: 0;
     overflow-y: auto;
 }

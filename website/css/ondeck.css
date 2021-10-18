@@ -17,7 +17,7 @@
 }
 
 .curheat {
-  border: 10px solid black;
+  border: 10px solid lime;
 }
 .curgroup .d0 th,
 .curgroup .d1 th {
@@ -26,10 +26,11 @@
 }
 
 td .car {
-  font-size: x-large;
+  font-size: -webkit-xxx-large;
+  color: #ff0000
 }
 td .racer {
-  font-size: small;
+  font-size: medium;
 }
 
 img.racer-photo {
@@ -92,7 +93,7 @@ th.nrows4 img {
     display: block;
     margin-left: auto;
     margin-right: auto;
-    height: 100px;
+    height: 200px;
 }
 
 .heat_row {

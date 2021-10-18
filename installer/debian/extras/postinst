@@ -4,6 +4,6 @@
 ######## where they can be easily edited on a foreign host.
 if [ "$ID" = "raspbian" ] ; then
   if [ ! -f /boot/derbynet.conf ] ; then
-    cp /etc/derbynet.conf /boot
+    cp /usr/local/bin/derbynet/derbynet.conf /boot
   fi
 fi

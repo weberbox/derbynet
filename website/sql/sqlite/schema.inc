@@ -179,6 +179,16 @@ array(
 "INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('show-racer-photos-rr', '1')",
 "INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('show-car-photos-rr', '1')",
 "INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('upload-videos', '1')",
+"INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('use-subgroups', '1')",
+"INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('scoring', '1')",
+"INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('lane_count', '4')",
+"INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('track-length', '32')",
+"INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('images-dir', 'Cub Scouts')",
+"INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('one-trophy-per', '1')",
+"INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('use-master-sched', '0')",
+"INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('n-pack-trophies', '3')",
+"INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('n-den-trophies', '0')",
+"INSERT INTO RaceInfo (itemkey, itemvalue) VALUES ('n-rank-trophies', '3')",
   )
 );
 ?>

@@ -1,7 +1,7 @@
 <?php
 
 function emit_images_dir_select($attrs = '') {
-  $current = read_raceinfo('images-dir', 'Generic');
+  $current = read_raceinfo('images-dir', 'Cub Scouts');
   $image_directories = @scandir(image_base_dir());
   if ($image_directories !== false) {
     usort($image_directories,

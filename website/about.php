@@ -83,6 +83,7 @@ window.onload = function() {
 
 <p class='advert'><b>DerbyNet</b> is the free, open-source, multi-screen race management system for Pinewood Derby-style racing.  It's used by packs and other groups all around the country, and around the globe!
 Check us out <a href="http://jeffpiazza.github.io/derbynet/" target="_blank">on GitHub!</a></p>
+<p class='advert'><b>DerbyNet Pack 490</b> <a href="https://github.com/weberbox/derbynet/tree/v6.1" target="_blank">on GitHub!</a></p>
 
 <?php
 $urls = preferred_urls();
@@ -117,9 +118,6 @@ if (count($urls) == 0) {
   echo " as the URL for connecting other local devices to this server.</p>\n";
 }
 ?>
-
-<p>Please include this page if you wish to report a bug, and
-   contact me at <a href="mailto:bugs@jeffpiazza.org">bugs@jeffpiazza.org</a>.</p>
 
 <p>Your browser's User Agent string is<br/><span id="useragent"></span>.</p>
 

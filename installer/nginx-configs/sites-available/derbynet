@@ -1,0 +1,60 @@
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    include snippets/self-signed.conf;
+    include snippets/ssl-params.conf;
+    server_name pack490derby.com www.pack490derby.com;
+    root /home/jweber/GitHub/derbynet/website;
+	
+	#include derbynet/location.snippet;
+	
+    location / {
+		try_files $uri $uri.html $uri/ @extensionless-php;
+		index index.html index.htm index.php;
+	}
+	
+    location ~ /.*\.php(/.*)?$ {
+		client_max_body_size 8M;
+		include snippets/fastcgi-php.conf;
+		fastcgi_pass unix:/run/php/php7.4-fpm.sock;
+		fastcgi_param CONFIG_DIR /home/jweber/GitHub/derbynet/website/local;
+	}
+  
+    location @extensionless-php {
+		rewrite ^(.*)$ $1.php last;
+	}
+
+    location /downloads/ {
+                autoindex on;
+        }
+}
+
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name pack490derby.com www.pack490derby.com;
+    #return 302 https://$server_name$request_uri;
+    root /home/jweber/GitHub/derbynet/website;
+
+        #include derbynet/location.snippet;
+
+    location / {
+                try_files $uri $uri.html $uri/ @extensionless-php;
+                index index.html index.htm index.php;
+        }
+
+    location ~ /.*\.php(/.*)?$ {
+                client_max_body_size 8M;
+                include snippets/fastcgi-php.conf;
+                fastcgi_pass unix:/run/php/php7.4-fpm.sock;
+                fastcgi_param CONFIG_DIR /home/jweber/GitHub/derbynet/website/local;
+        }
+
+    location @extensionless-php {
+                rewrite ^(.*)$ $1.php last;
+        }
+
+    location /downloads/ {
+                autoindex on;
+        }
+}

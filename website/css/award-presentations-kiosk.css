@@ -1,4 +1,12 @@
 
+.award-background {
+    background-image: url(/img/pattern.png) !important;
+    background-position: 0 0 !important;
+    background-repeat: repeat !important;
+    height: 100vh;
+    margin-top: -90px
+}
+
 p.award-racer {
     line-height: 0.4; /* times font-size */
 }
