@@ -15,6 +15,7 @@
     <property name="extras" location="../../extras"/>
     <property name="output-dir" location="../../.."/>
     <property name="nginx-configs" location="../nginx-configs"/>
+    <property name="certs" location="../../../certs"/>
     
     <!-- These should be inherited from invoking task;
          these definitions are only backups -->
@@ -34,80 +35,118 @@
 
     <!-- debian-root is where we assemble the files we intend to install on the
          destination system -->
-    <property name="debian-root"
-              location="derbynet_${release-series}-${git-rev-count}${git-dirty}"/>
+    <property name="debian-root-website"
+              location="derbynet_${release-series}-${git-rev-count}${git-dirty}-website"/>
+    <property name="debian-root-timer"
+              location="derbynet_${release-series}-${git-rev-count}${git-dirty}-timer"/>
+    <property name="debian-root-extras"
+              location="derbynet_${release-series}-${git-rev-count}${git-dirty}-extras"/>
+    <property name="debian-root-docs"
+              location="derbynet_${release-series}-${git-rev-count}${git-dirty}-docs"/>
     <!-- debian-stage is where we assemble the very specific files that get
          archived into the final deb file. -->
     <property name="debian-stage" location="debian-stage"/>
 
     <target name="debian-stage-website">
-        <mkdir dir="${debian-root}/var/www/html/derbynet"/>
-        <copy todir="${debian-root}/var/www/html/derbynet" overwrite="true">
+        <mkdir dir="${debian-root-website}/var/www/html/derbynet"/>
+        <copy todir="${debian-root-website}/var/www/html/derbynet" overwrite="true">
             <fileset dir="${website}">
                 <include name="**"/>
                 <exclude name="local/**"/>
             </fileset>
         </copy>
-        <mkdir dir="${debian-root}/etc/nginx/derbynet"/>
-        <copy todir="${debian-root}/etc/nginx/derbynet">
-            <fileset dir="${nginx-configs}/derbynet">
+        <mkdir dir="${debian-root-website}/etc/nginx/sites-available"/>
+        <copy todir="${debian-root-website}/etc/nginx/sites-available">
+            <fileset dir="${nginx-configs}/sites-available">
+                <include name="**"/>
+            </fileset>
+        </copy>
+        <mkdir dir="${debian-root-website}/etc/ssl/certs"/>
+        <copy todir="${debian-root-website}/etc/ssl/certs">
+            <fileset dir="${certs}/crt">
+                <include name="**"/>
+            </fileset>
+        </copy>
+        <mkdir dir="${debian-root-website}/etc/ssl/private"/>
+        <copy todir="${debian-root-website}/etc/ssl/private">
+            <fileset dir="${certs}/key">
                 <include name="**"/>
             </fileset>
         </copy>
 
-        <copy todir="${debian-root}/var/www/html">
+        <copy todir="${debian-root-website}/var/www/html">
             <fileset dir="${nginx-configs}">
                 <include name="index.html"/>
+            </fileset>
+        </copy>
+        <copy todir="${debian-root-website}/usr/local/bin/derbynet/docs">
+            <fileset dir="${docs-dist}">
+                <include name="**"/>
             </fileset>
         </copy>
     </target>
 
     <target name="debian-stage-timer">
-        <mkdir dir="${debian-root}/usr/bin"/>
-        <copy todir="${debian-root}/usr/bin">
+        <mkdir dir="${debian-root-timer}/usr/local/bin/derbynet/timer"/>
+        <copy todir="${debian-root-timer}/usr/local/bin/derbynet/timer">
             <fileset dir="${timer-dist}">
                 <include name="derby-timer.jar"/>
+            </fileset>
+        </copy>
+        <copy todir="${debian-root-timer}/usr/local/bin/derbynet/autostart">
+            <fileset dir="${extras}/autostart">
+                <include name="derby-timer.desktop"/>
+            </fileset>
+        </copy>
+        <copy todir="${debian-root-timer}/usr/local/bin/derbynet/docs">
+            <fileset dir="${docs-dist}">
+                <include name="Timer Operation.pdf"/>
+            </fileset>
+        </copy>
+        <copy todir="${debian-root-timer}/usr/local/bin/derbynet/scripts">
+            <fileset dir="${extras}/scripts">
+                <include name="derby-timer.sh"/>
             </fileset>
         </copy>
         <!-- Execute permission set in tarfileset -->
     </target>
 
     <target name="debian-stage-extras">
-        <mkdir dir="${debian-root}/etc"/>
-        <copy todir="${debian-root}/etc">
+        <mkdir dir="${debian-root-extras}/usr/local/bin/derbynet"/>
+        <copy todir="${debian-root-extras}/usr/local/bin/derbynet">
             <fileset dir="${extras}">
                 <include name="derbynet.conf"/>
             </fileset>
         </copy>
-        <touch mkdirs="true" file="${debian-root}/etc/derbynet.d/.placeholder"/>
-        <copy todir="${debian-root}/usr/share/derbynet/autostart">
+        <touch mkdirs="true" file="${debian-root-extras}/etc/derbynet.d/.placeholder"/>
+        <copy todir="${debian-root-extras}/usr/local/bin/derbynet/autostart">
             <fileset dir="${extras}/autostart">
                 <include name="**"/>
             </fileset>
         </copy>
-        <copy todir="${debian-root}/usr/share/derbynet/conf">
+        <copy todir="${debian-root-extras}/usr/local/bin/derbynet/conf">
             <fileset dir="${extras}/conf">
                 <include name="**"/>
             </fileset>
         </copy>
-        <copy todir="${debian-root}/usr/share/derbynet/scripts">
+        <copy todir="${debian-root-extras}/usr/local/bin/derbynet/scripts">
             <fileset dir="${extras}/scripts">
                 <include name="**"/>
             </fileset>
         </copy>
-        <copy todir="${debian-root}/usr/share/derbynet/sounds">
+        <copy todir="${debian-root-extras}/usr/local/bin/derbynet/sounds">
             <fileset dir="${extras}/sounds">
                 <include name="**"/>
             </fileset>
         </copy>
-        <copy todir="${debian-root}/usr/share/derbynet/tools">
+        <copy todir="${debian-root-extras}/usr/local/bin/derbynet/tools">
             <fileset dir="${extras}/tools">
                 <include name="**"/>
             </fileset>
         </copy>
         <!-- Execute permissions for scripts are set in tarfileset -->
-        <mkdir dir="${debian-root}/usr/share/derbynet/extras"/>
-        <copy todir="${debian-root}/usr/share/derbynet/extras">
+        <mkdir dir="${debian-root-extras}/usr/local/bin/derbynet/extras"/>
+        <copy todir="${debian-root-extras}/usr/local/bin/derbynet/extras">
             <fileset dir="${extras}">
                 <include name="rpi/**"/>
             </fileset>
@@ -115,8 +154,8 @@
     </target>
 
     <target name="debian-stage-docs">
-        <mkdir  dir="${debian-root}/usr/share/derbynet/docs"/>
-        <copy todir="${debian-root}/usr/share/derbynet/docs">
+        <mkdir  dir="${debian-root-docs}/usr/local/bin/derbynet/docs"/>
+        <copy todir="${debian-root-docs}/usr/local/bin/derbynet/docs">
             <fileset dir="${docs-dist}">
                 <include name="**"/>
             </fileset>
@@ -127,16 +166,18 @@
                                           debian-stage-docs">
         <mkdir dir="${debian-stage}"/>
         <tar destfile="${debian-stage}/data.tar.gz" compression="gzip">
-            <tarfileset dir="${debian-root}">
+            <tarfileset dir="${debian-root-website}">
                 <include name="var/www/**"/>
                 <include name="etc/nginx/**"/>
-                <!-- /usr/share reliably exists on the target, but
-                     usr/share/derbynet has to be created explicitly.  The "**"
+                <include name="etc/ssl/certs/**"/>
+                <include name="etc/ssl/private/**"/>
+                <!-- /usr/local/bin reliably exists on the target, but
+                     usr/local/bin/derbynet has to be created explicitly.  The "**"
                      entry that follows will only try to create the final
                      .../docs directory. -->
-                <include name="usr/share/derbynet"/>
-                <include name="usr/share/derbynet/docs/**"/>
-                <exclude name="usr/share/derbynet/docs/Timer Operation.pdf"/>
+                <include name="usr/local/bin/derbynet"/>
+                <include name="usr/local/bin/derbynet/docs/**"/>
+                <exclude name="usr/local/bin/derbynet/docs/Timer Operation.pdf"/>
             </tarfileset>
         </tar>
 
@@ -173,21 +214,21 @@
             depends="debian-stage-timer, debian-stage-extras, debian-stage-docs">
         <mkdir dir="${debian-stage}"/>
         <tar destfile="${debian-stage}/data.tar.gz" compression="gzip">
-            <tarfileset dir="${debian-root}">
-                <!-- /usr/share reliably exists on the target, but
-                     usr/share/derbynet has to be created explicitly.  -->
-                <include name="usr/share/derbynet"/>
-                <include name="usr/share/derbynet/autostart"/>
-                <include name="usr/share/derbynet/autostart/derby-timer.desktop"/>
-                <include name="usr/share/derbynet/docs"/>
-                <include name="usr/share/derbynet/docs/Timer Operation.pdf"/>
-                <include name="usr/share/derbynet/scripts"/>
+            <tarfileset dir="${debian-root-timer}">
+                <!-- /usr/local/bin/derbynet reliably exists on the target, but
+                     usr/local/bin/derbynet has to be created explicitly.  -->
+                <include name="usr/local/bin/derbynet"/>
+                <include name="usr/local/bin/derbynet/autostart"/>
+                <include name="usr/local/bin/derbynet/autostart/derby-timer.desktop"/>
+                <include name="usr/local/bin/derbynet/docs"/>
+                <include name="usr/local/bin/derbynet/docs/Timer Operation.pdf"/>
+                <include name="usr/local/bin/derbynet/scripts"/>
             </tarfileset>
             <!-- This second tarfileset sets executable permissions for these
                  files. -->
-            <tarfileset dir="${debian-root}" filemode="755">
-                <include name="usr/bin/**"/>
-                <include name="usr/share/derbynet/scripts/derby-timer.sh"/>
+            <tarfileset dir="${debian-root-timer}" filemode="755">
+                <include name="usr/local/bin/**"/>
+                <include name="usr/local/bin/derbynet/scripts/derby-timer.sh"/>
             </tarfileset>
         </tar>
 
@@ -208,7 +249,7 @@
 
         <delete file="${output-dir}/${deb-timer-label}.deb" failonerror="false" quiet="true"/>
         <exec executable="ar">
-            <arg value="-q"/>
+            <arg value="rcs"/>
             <arg value="${output-dir}/${deb-timer-label}.deb"/>
             <arg value="${debian-stage}/debian-binary"/>
             <arg value="${debian-stage}/control.tar.gz"/>
@@ -220,21 +261,21 @@
     <target name="debian-extras" depends="debian-stage-extras">
         <mkdir dir="${debian-stage}"/>
         <tar destfile="${debian-stage}/data.tar.gz" compression="gzip">
-            <tarfileset dir="${debian-root}">
+            <tarfileset dir="${debian-root-extras}">
                 <include name="etc/*"/>
                 <include name="etc/derbynet.d/**"/>
-                <include name="usr/share/derbynet"/>
-                <include name="usr/share/derbynet/autostart/**"/>
-                <exclude name="usr/share/derbynet/autostart/derby-timer.desktop"/>
-                <include name="usr/share/derbynet/conf/**"/>
-                <include name="usr/share/derbynet/extras/**"/>
-                <include name="usr/share/derbynet/sounds/**"/>
+                <include name="usr/local/bin/derbynet"/>
+                <include name="usr/local/bin/derbynet/autostart/**"/>
+                <exclude name="usr/local/bin/derbynet/autostart/derby-timer.desktop"/>
+                <include name="usr/local/bin/derbynet/conf/**"/>
+                <include name="usr/local/bin/derbynet/extras/**"/>
+                <include name="usr/local/bin/derbynet/sounds/**"/>
             </tarfileset>
             <!-- This second tarfileset sets executable permissions for these
                  files. -->
-            <tarfileset dir="${debian-root}" filemode="755">
-                <include name="usr/share/derbynet/scripts/**"/>
-                <exclude name="usr/share/derbynet/scripts/derby-timer.sh"/>
+            <tarfileset dir="${debian-root-extras}" filemode="755">
+                <include name="usr/local/bin/derbynet/scripts/**"/>
+                <exclude name="usr/local/bin/derbynet/scripts/derby-timer.sh"/>
             </tarfileset>
         </tar>
 
@@ -266,6 +307,9 @@
     </target>
 
     <target name="dist" depends="debian-server, debian-timer, debian-extras">
-        <delete dir="${debian-root}"/>
+        <delete dir="${debian-root-website}"/>
+        <delete dir="${debian-root-timer}"/>
+        <delete dir="${debian-root-extras}"/>
+        <delete dir="${debian-root-docs}"/>
     </target>
 </project>
