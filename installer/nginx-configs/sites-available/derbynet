@@ -4,7 +4,7 @@ server {
     include snippets/self-signed.conf;
     include snippets/ssl-params.conf;
     server_name pack490derby.com www.pack490derby.com;
-    root /home/jweber/GitHub/derbynet/website;
+    root /var/www/html/derbynet;
 	
 	#include derbynet/location.snippet;
 	
@@ -17,7 +17,7 @@ server {
 		client_max_body_size 8M;
 		include snippets/fastcgi-php.conf;
 		fastcgi_pass unix:/run/php/php7.4-fpm.sock;
-		fastcgi_param CONFIG_DIR /home/jweber/GitHub/derbynet/website/local;
+		fastcgi_param CONFIG_DIR /var/www/html/derbynet/local;
 	}
   
     location @extensionless-php {
@@ -34,7 +34,7 @@ server {
     listen [::]:80 default_server;
     server_name pack490derby.com www.pack490derby.com;
     #return 302 https://$server_name$request_uri;
-    root /home/jweber/GitHub/derbynet/website;
+    root /var/www/html/derbynet;
 
         #include derbynet/location.snippet;
 
@@ -47,7 +47,7 @@ server {
                 client_max_body_size 8M;
                 include snippets/fastcgi-php.conf;
                 fastcgi_pass unix:/run/php/php7.4-fpm.sock;
-                fastcgi_param CONFIG_DIR /home/jweber/GitHub/derbynet/website/local;
+                fastcgi_param CONFIG_DIR /var/www/html/derbynet/local;
         }
 
     location @extensionless-php {
