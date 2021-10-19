@@ -447,7 +447,7 @@ class StandingsOracle {
     if (show_car_name_in_standings()) {
       echo "<th>Car Name</th>";
     }
-    if ($this->use_groups) {
+    if (!this->use_subgroups && $this->use_groups) {
       echo "<th class='col-group'>".group_label()."</th>";
       echo "<th class='col-ingroup'>In <span id='per-group-label'>".group_label()."</span></th>";
     }
@@ -548,7 +548,7 @@ class StandingsOracle {
 
       // Racer's (native) class and place in class/group.  These columns only get shown
       // for non-aggregate racing rounds, so round_classid == classid
-      if ($this->use_groups) {
+      if (!$this->use_subgroups && $this->use_groups) {
         $key = stkey_round($row['roundid']);  // Racer's classid
 
         echo "<td class='col-group'>".htmlspecialchars($row['class'], ENT_QUOTES, 'UTF-8')."</td>";
