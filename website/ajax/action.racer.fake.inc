@@ -44,6 +44,7 @@ if (have_permission(SET_UP_PERMISSION)) {
       insert_new_racer(array('firstname' => $racer['firstname'],
                              'lastname' => $racer['lastname'],
                              'carname' => '',
+                             'carnumber' => $g * 100 + $r + 1,
                              'classid' => $classid,
                              'rankid' => $rankid));
 

@@ -12,5 +12,10 @@
 
 ######## Undo edit to default nginx site
 
-sed -i -e '/include derbynet\/location.snippet/ d' /etc/nginx/sites-available/default
+if [ -f /etc/nginx/sites-enabled/derbynet ] ; then
+  rm /etc/nginx/sites-enabled/derbynet
+fi
 
+if [ ! -f /etc/nginx/sites-enabled/default ] ; then
+  ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled
+fi

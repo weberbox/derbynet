@@ -15,7 +15,9 @@
     <property name="extras" location="../../extras"/>
     <property name="output-dir" location="../../.."/>
     <property name="nginx-configs" location="../nginx-configs"/>
-    <property name="certs" location="../../../certs"/>
+    <property name="certs" location="../../../include/certs"/>
+    <property name="downloads" location="../../../include/downloads"/>
+    <property name="service" location="../service"/>
     
     <!-- These should be inherited from invoking task;
          these definitions are only backups -->
@@ -55,9 +57,21 @@
                 <exclude name="local/**"/>
             </fileset>
         </copy>
+        <mkdir dir="${debian-root-website}/var/www/html/derbynet/downloads"/>
+        <copy todir="${debian-root-website}/var/www/html/derbynet/downloads" overwrite="true">
+            <fileset dir="${downloads}">
+                <include name="**"/>
+            </fileset>
+        </copy>
         <mkdir dir="${debian-root-website}/etc/nginx/sites-available"/>
         <copy todir="${debian-root-website}/etc/nginx/sites-available">
             <fileset dir="${nginx-configs}/sites-available">
+                <include name="**"/>
+            </fileset>
+        </copy>
+        <mkdir dir="${debian-root-website}/etc/nginx/snippets"/>
+        <copy todir="${debian-root-website}/etc/nginx/snippets">
+            <fileset dir="${nginx-configs}/snippets">
                 <include name="**"/>
             </fileset>
         </copy>
@@ -91,6 +105,16 @@
         <copy todir="${debian-root-timer}/usr/local/bin/derbynet/timer">
             <fileset dir="${timer-dist}">
                 <include name="derby-timer.jar"/>
+            </fileset>
+            <fileset dir="${extras}">
+                <include name="derbytimer"/>
+                <include name="derbynet.conf"/>
+            </fileset>
+        </copy>
+        <mkdir dir="${debian-root-timer}/etc/systemd/system"/>
+        <copy todir="${debian-root-timer}/etc/systemd/system">
+            <fileset dir="${service}">
+                <include name="**"/>
             </fileset>
         </copy>
         <copy todir="${debian-root-timer}/usr/local/bin/derbynet/autostart">
@@ -227,7 +251,8 @@
             <!-- This second tarfileset sets executable permissions for these
                  files. -->
             <tarfileset dir="${debian-root-timer}" filemode="755">
-                <include name="usr/local/bin/**"/>
+                <include name="etc/systemd/system/**"/>
+                <include name="usr/local/bin/derbynet/timer/**"/>
                 <include name="usr/local/bin/derbynet/scripts/derby-timer.sh"/>
             </tarfileset>
         </tar>
@@ -241,6 +266,8 @@
         </copy>
         <tar destfile="${debian-stage}/control.tar.gz" compression="gzip">
             <tarfileset file="./timer/conffiles"/>
+            <tarfileset file="./timer/postinst" filemode="755"/>
+            <tarfileset file="./timer/prerm" filemode="755"/>
             <tarfileset file="${debian-stage}/control"/>
         </tar>
         <delete file="${debian-stage}/control" failonerror="false" quiet="true"/>

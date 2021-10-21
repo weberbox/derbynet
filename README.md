@@ -1,3 +1,3 @@
-# Please visit the project web site at [http://jeffpiazza.github.io/derbynet](http://jeffpiazza.github.io/derbynet).
+# This Derbynet version is customized for Pack 490. 
 
-![icon](https://raw.githubusercontent.com/jeffpiazza/derbynet/master/website/img/derbynet-300.png)
+![icon](https://raw.githubusercontent.com/weberbox/derbynet/master/website/img/derbynet-300.png)

@@ -1,0 +1,22 @@
+[Unit]
+Description=DerbyNet Timer Service
+
+[Service]
+User=root
+
+# The configuration file application.properties should be here:
+#change this to your workspace
+
+WorkingDirectory=/usr/local/bin/derbynet/timer
+
+#path to executable.
+#executable is a bash script which calls jar
+ExecStart=/usr/local/bin/derbynet/timer/derbytimer
+
+SuccessExitStatus=143
+TimeoutStopSec=10
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

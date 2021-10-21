@@ -1,0 +1,7 @@
+#! /bin/sh
+
+######## Start service
+
+systemctl daemon-reload
+
+service derbynet-timer start

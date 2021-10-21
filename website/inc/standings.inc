@@ -447,7 +447,7 @@ class StandingsOracle {
     if (show_car_name_in_standings()) {
       echo "<th>Car Name</th>";
     }
-    if (!this->use_subgroups && $this->use_groups) {
+    if (!$this->use_subgroups && $this->use_groups) {
       echo "<th class='col-group'>".group_label()."</th>";
       echo "<th class='col-ingroup'>In <span id='per-group-label'>".group_label()."</span></th>";
     }
